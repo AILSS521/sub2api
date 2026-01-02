@@ -1326,14 +1326,16 @@ func (s *GatewayService) handleErrorResponse(ctx context.Context, resp *http.Res
 
 	switch resp.StatusCode {
 	case 400:
-		// 始终记录 400 错误详情以便调试
-		log.Printf(
-			"Upstream 400 error (account=%d platform=%s type=%s): %s",
-			account.ID,
-			account.Platform,
-			account.Type,
-			truncateForLog(body, 2000),
-		)
+		// 仅记录上游错误摘要（避免输出请求内容）；需要时可通过配置打开
+		if s.cfg != nil && s.cfg.Gateway.LogUpstreamErrorBody {
+			log.Printf(
+				"Upstream 400 error (account=%d platform=%s type=%s): %s",
+				account.ID,
+				account.Platform,
+				account.Type,
+				truncateForLog(body, s.cfg.Gateway.LogUpstreamErrorBodyMaxBytes),
+			)
+		}
 		c.Data(http.StatusBadRequest, "application/json", body)
 		return nil, fmt.Errorf("upstream error: %d", resp.StatusCode)
 	case 401:
