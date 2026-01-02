@@ -1140,7 +1140,7 @@ func (s *GatewayService) buildUpstreamRequest(ctx context.Context, c *gin.Contex
 					body = newBody
 					log.Printf("[DEBUG] Account %d user_id rewritten", account.ID)
 				} else {
-					log.Printf("[DEBUG] Account %d user_id NOT rewritten (no metadata.user_id in request or error)")
+					log.Printf("[DEBUG] Account %d user_id NOT rewritten (no metadata.user_id in request or error)", account.ID)
 				}
 				_ = originalBody // suppress unused warning
 			} else {
