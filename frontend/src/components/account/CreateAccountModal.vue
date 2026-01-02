@@ -2165,7 +2165,8 @@ const handleCookieAuth = async (sessionKey: string) => {
           extra,
           proxy_id: form.proxy_id,
           concurrency: form.concurrency,
-          priority: form.priority
+          priority: form.priority,
+          group_ids: form.group_ids
         })
 
         successCount++
