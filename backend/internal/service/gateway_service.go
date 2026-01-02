@@ -1149,12 +1149,14 @@ func (s *GatewayService) buildUpstreamRequest(ctx context.Context, c *gin.Contex
 		}
 	}
 
-	// Debug: 打印请求体摘要
+	// Debug: 打印请求体摘要（去掉换行符避免日志截断）
 	bodyPreview := string(body)
-	if len(bodyPreview) > 500 {
-		bodyPreview = bodyPreview[:500] + "..."
+	if len(bodyPreview) > 1000 {
+		bodyPreview = bodyPreview[:1000] + "..."
 	}
-	log.Printf("[DEBUG] Account %d request body preview: %s", account.ID, bodyPreview)
+	bodyPreview = strings.ReplaceAll(bodyPreview, "\n", " ")
+	bodyPreview = strings.ReplaceAll(bodyPreview, "\r", "")
+	log.Printf("[DEBUG] Account %d request body: %s", account.ID, bodyPreview)
 
 	req, err := http.NewRequestWithContext(ctx, "POST", targetURL, bytes.NewReader(body))
 	if err != nil {
