@@ -10,8 +10,11 @@ const (
 	BetaFineGrainedToolStreaming = "fine-grained-tool-streaming-2025-05-14"
 )
 
-// DefaultBetaHeader Claude Code 客户端默认的 anthropic-beta header
-const DefaultBetaHeader = BetaClaudeCode + "," + BetaOAuth + "," + BetaInterleavedThinking + "," + BetaFineGrainedToolStreaming
+// DefaultBetaHeader 普通 OAuth 账号默认的 anthropic-beta header（不包含 claude-code）
+const DefaultBetaHeader = BetaOAuth + "," + BetaInterleavedThinking
+
+// ClaudeCodeBetaHeader Claude Code 专用的 anthropic-beta header
+const ClaudeCodeBetaHeader = BetaClaudeCode + "," + BetaOAuth + "," + BetaInterleavedThinking + "," + BetaFineGrainedToolStreaming
 
 // HaikuBetaHeader Haiku 模型使用的 anthropic-beta header（不需要 claude-code beta）
 const HaikuBetaHeader = BetaOAuth + "," + BetaInterleavedThinking
