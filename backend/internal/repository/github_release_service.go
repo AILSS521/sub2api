@@ -17,6 +17,8 @@ import (
 
 type githubReleaseClient struct {
 	proxyRepo service.ProxyRepository
+	// testClient 用于测试时覆盖 HTTP 客户端
+	testClient *http.Client
 }
 
 func NewGitHubReleaseClient(proxyRepo service.ProxyRepository) service.GitHubReleaseClient {
@@ -42,6 +44,11 @@ func (c *githubReleaseClient) findUpdateProxy(ctx context.Context) *service.Prox
 
 // getHTTPClient 获取 HTTP 客户端，优先使用更新代理
 func (c *githubReleaseClient) getHTTPClient(ctx context.Context, timeout time.Duration) *http.Client {
+	// 测试时使用 testClient
+	if c.testClient != nil {
+		return c.testClient
+	}
+
 	opts := httpclient.Options{
 		Timeout: timeout,
 	}
