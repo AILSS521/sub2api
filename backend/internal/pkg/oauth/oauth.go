@@ -20,7 +20,7 @@ const (
 
 	// OAuth endpoints
 	AuthorizeURL = "https://claude.ai/oauth/authorize"
-	TokenURL     = "https://console.anthropic.com/v1/oauth/token"
+	TokenURL     = "https://api.anthropic.com/v1/oauth/token"
 	RedirectURI  = "https://console.anthropic.com/oauth/code/callback"
 
 	// Scopes
