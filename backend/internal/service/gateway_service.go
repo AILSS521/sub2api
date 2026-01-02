@@ -1242,6 +1242,10 @@ func (s *GatewayService) Forward(ctx context.Context, c *gin.Context, account *A
 	// 强制执行 cache_control 块数量限制（最多 4 个）
 	body = enforceCacheControlLimit(body)
 
+	// Claude API 只允许 temperature 或 top_p 其中之一，优先使用 temperature
+	// 直接删除 top_p，与 claude-relay-service 处理方式一致
+	body, _ = sjson.DeleteBytes(body, "top_p")
+
 	// 应用模型映射（仅对apikey类型账号）
 	originalModel := reqModel
 	if account.Type == AccountTypeAPIKey {
@@ -2295,6 +2299,10 @@ func (s *GatewayService) ForwardCountTokens(ctx context.Context, c *gin.Context,
 
 	body := parsed.Body
 	reqModel := parsed.Model
+
+	// Claude API 只允许 temperature 或 top_p 其中之一，优先使用 temperature
+	// 直接删除 top_p，与 claude-relay-service 处理方式一致
+	body, _ = sjson.DeleteBytes(body, "top_p")
 
 	// Antigravity 账户不支持 count_tokens 转发，直接返回空值
 	if account.Platform == PlatformAntigravity {
