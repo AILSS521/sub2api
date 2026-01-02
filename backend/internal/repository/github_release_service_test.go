@@ -10,15 +10,52 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/Wei-Shaw/sub2api/internal/pkg/pagination"
+	"github.com/Wei-Shaw/sub2api/internal/service"
 	"github.com/stretchr/testify/require"
 	"github.com/stretchr/testify/suite"
 )
 
+// mockProxyRepository 是用于测试的 ProxyRepository mock
+type mockProxyRepository struct{}
+
+func (m *mockProxyRepository) Create(ctx context.Context, proxy *service.Proxy) error {
+	return nil
+}
+func (m *mockProxyRepository) GetByID(ctx context.Context, id int64) (*service.Proxy, error) {
+	return nil, nil
+}
+func (m *mockProxyRepository) Update(ctx context.Context, proxy *service.Proxy) error {
+	return nil
+}
+func (m *mockProxyRepository) Delete(ctx context.Context, id int64) error {
+	return nil
+}
+func (m *mockProxyRepository) List(ctx context.Context, params pagination.PaginationParams) ([]service.Proxy, *pagination.PaginationResult, error) {
+	return nil, nil, nil
+}
+func (m *mockProxyRepository) ListWithFilters(ctx context.Context, params pagination.PaginationParams, protocol, status, search string) ([]service.Proxy, *pagination.PaginationResult, error) {
+	return nil, nil, nil
+}
+func (m *mockProxyRepository) ListActive(ctx context.Context) ([]service.Proxy, error) {
+	return []service.Proxy{}, nil // 返回空列表，不使用代理
+}
+func (m *mockProxyRepository) ListActiveWithAccountCount(ctx context.Context) ([]service.ProxyWithAccountCount, error) {
+	return nil, nil
+}
+func (m *mockProxyRepository) ExistsByHostPortAuth(ctx context.Context, host string, port int, username, password string) (bool, error) {
+	return false, nil
+}
+func (m *mockProxyRepository) CountAccountsByProxyID(ctx context.Context, proxyID int64) (int64, error) {
+	return 0, nil
+}
+
 type GitHubReleaseServiceSuite struct {
 	suite.Suite
-	srv     *httptest.Server
-	client  *githubReleaseClient
-	tempDir string
+	srv       *httptest.Server
+	client    *githubReleaseClient
+	tempDir   string
+	proxyRepo service.ProxyRepository
 }
 
 // testTransport redirects requests to the test server
@@ -39,6 +76,7 @@ func (t *testTransport) RoundTrip(req *http.Request) (*http.Response, error) {
 
 func (s *GitHubReleaseServiceSuite) SetupTest() {
 	s.tempDir = s.T().TempDir()
+	s.proxyRepo = &mockProxyRepository{}
 }
 
 func (s *GitHubReleaseServiceSuite) TearDownTest() {
@@ -55,7 +93,7 @@ func (s *GitHubReleaseServiceSuite) TestDownloadFile_EnforcesMaxSize_ContentLeng
 		_, _ = w.Write(bytes.Repeat([]byte("a"), 100))
 	}))
 
-	client, ok := NewGitHubReleaseClient().(*githubReleaseClient)
+	client, ok := NewGitHubReleaseClient(s.proxyRepo).(*githubReleaseClient)
 	require.True(s.T(), ok, "type assertion failed")
 	s.client = client
 
@@ -82,7 +120,7 @@ func (s *GitHubReleaseServiceSuite) TestDownloadFile_EnforcesMaxSize_Chunked() {
 		}
 	}))
 
-	client, ok := NewGitHubReleaseClient().(*githubReleaseClient)
+	client, ok := NewGitHubReleaseClient(s.proxyRepo).(*githubReleaseClient)
 	require.True(s.T(), ok, "type assertion failed")
 	s.client = client
 
@@ -108,7 +146,7 @@ func (s *GitHubReleaseServiceSuite) TestDownloadFile_Success() {
 		}
 	}))
 
-	client, ok := NewGitHubReleaseClient().(*githubReleaseClient)
+	client, ok := NewGitHubReleaseClient(s.proxyRepo).(*githubReleaseClient)
 	require.True(s.T(), ok, "type assertion failed")
 	s.client = client
 
@@ -127,7 +165,7 @@ func (s *GitHubReleaseServiceSuite) TestDownloadFile_404() {
 		w.WriteHeader(http.StatusNotFound)
 	}))
 
-	client, ok := NewGitHubReleaseClient().(*githubReleaseClient)
+	client, ok := NewGitHubReleaseClient(s.proxyRepo).(*githubReleaseClient)
 	require.True(s.T(), ok, "type assertion failed")
 	s.client = client
 
@@ -145,7 +183,7 @@ func (s *GitHubReleaseServiceSuite) TestFetchChecksumFile_Success() {
 		_, _ = w.Write([]byte("sum"))
 	}))
 
-	client, ok := NewGitHubReleaseClient().(*githubReleaseClient)
+	client, ok := NewGitHubReleaseClient(s.proxyRepo).(*githubReleaseClient)
 	require.True(s.T(), ok, "type assertion failed")
 	s.client = client
 
@@ -159,7 +197,7 @@ func (s *GitHubReleaseServiceSuite) TestFetchChecksumFile_Non200() {
 		w.WriteHeader(http.StatusInternalServerError)
 	}))
 
-	client, ok := NewGitHubReleaseClient().(*githubReleaseClient)
+	client, ok := NewGitHubReleaseClient(s.proxyRepo).(*githubReleaseClient)
 	require.True(s.T(), ok, "type assertion failed")
 	s.client = client
 
@@ -172,7 +210,7 @@ func (s *GitHubReleaseServiceSuite) TestDownloadFile_ContextCancel() {
 		<-r.Context().Done()
 	}))
 
-	client, ok := NewGitHubReleaseClient().(*githubReleaseClient)
+	client, ok := NewGitHubReleaseClient(s.proxyRepo).(*githubReleaseClient)
 	require.True(s.T(), ok, "type assertion failed")
 	s.client = client
 
@@ -185,7 +223,7 @@ func (s *GitHubReleaseServiceSuite) TestDownloadFile_ContextCancel() {
 }
 
 func (s *GitHubReleaseServiceSuite) TestDownloadFile_InvalidURL() {
-	client, ok := NewGitHubReleaseClient().(*githubReleaseClient)
+	client, ok := NewGitHubReleaseClient(s.proxyRepo).(*githubReleaseClient)
 	require.True(s.T(), ok, "type assertion failed")
 	s.client = client
 
@@ -200,7 +238,7 @@ func (s *GitHubReleaseServiceSuite) TestDownloadFile_InvalidDestPath() {
 		_, _ = w.Write([]byte("content"))
 	}))
 
-	client, ok := NewGitHubReleaseClient().(*githubReleaseClient)
+	client, ok := NewGitHubReleaseClient(s.proxyRepo).(*githubReleaseClient)
 	require.True(s.T(), ok, "type assertion failed")
 	s.client = client
 
@@ -211,7 +249,7 @@ func (s *GitHubReleaseServiceSuite) TestDownloadFile_InvalidDestPath() {
 }
 
 func (s *GitHubReleaseServiceSuite) TestFetchChecksumFile_InvalidURL() {
-	client, ok := NewGitHubReleaseClient().(*githubReleaseClient)
+	client, ok := NewGitHubReleaseClient(s.proxyRepo).(*githubReleaseClient)
 	require.True(s.T(), ok, "type assertion failed")
 	s.client = client
 
@@ -244,7 +282,8 @@ func (s *GitHubReleaseServiceSuite) TestFetchLatestRelease_Success() {
 
 	// Use custom transport to redirect requests to test server
 	s.client = &githubReleaseClient{
-		httpClient: &http.Client{
+		proxyRepo: s.proxyRepo,
+		testClient: &http.Client{
 			Transport: &testTransport{testServerURL: s.srv.URL},
 		},
 	}
@@ -263,7 +302,8 @@ func (s *GitHubReleaseServiceSuite) TestFetchLatestRelease_Non200() {
 	}))
 
 	s.client = &githubReleaseClient{
-		httpClient: &http.Client{
+		proxyRepo: s.proxyRepo,
+		testClient: &http.Client{
 			Transport: &testTransport{testServerURL: s.srv.URL},
 		},
 	}
@@ -280,7 +320,8 @@ func (s *GitHubReleaseServiceSuite) TestFetchLatestRelease_InvalidJSON() {
 	}))
 
 	s.client = &githubReleaseClient{
-		httpClient: &http.Client{
+		proxyRepo: s.proxyRepo,
+		testClient: &http.Client{
 			Transport: &testTransport{testServerURL: s.srv.URL},
 		},
 	}
@@ -295,7 +336,8 @@ func (s *GitHubReleaseServiceSuite) TestFetchLatestRelease_ContextCancel() {
 	}))
 
 	s.client = &githubReleaseClient{
-		httpClient: &http.Client{
+		proxyRepo: s.proxyRepo,
+		testClient: &http.Client{
 			Transport: &testTransport{testServerURL: s.srv.URL},
 		},
 	}
@@ -312,7 +354,7 @@ func (s *GitHubReleaseServiceSuite) TestFetchChecksumFile_ContextCancel() {
 		<-r.Context().Done()
 	}))
 
-	client, ok := NewGitHubReleaseClient().(*githubReleaseClient)
+	client, ok := NewGitHubReleaseClient(s.proxyRepo).(*githubReleaseClient)
 	require.True(s.T(), ok, "type assertion failed")
 	s.client = client
 
