@@ -310,15 +310,24 @@ func (s *GatewayService) replaceModelInBody(body []byte, newModel string) []byte
 	return newBody
 }
 
-// Claude Code 系统提示词
-const claudeCodeSystemPrompt = "You are Claude Code, Anthropic's official CLI for Claude."
-
 // ensureClaudeCodeSystemPrompt 确保 system 字段第一位是 Claude Code 提示词
-// 参考 claude-relay-service 的实现
+// 参考 claude-relay-service 的实现：
+// 1. 首先通过相似度检测判断是否是真实的 Claude Code 请求
+// 2. 如果是真实的 Claude Code 请求（相似度 >= 阈值），则不注入
+// 3. 如果不是真实的 Claude Code 请求，则在 system 第一位插入 Claude Code 提示词
 func (s *GatewayService) ensureClaudeCodeSystemPrompt(body []byte, parsed *ParsedRequest) []byte {
+	// 判断是否是真实的 Claude Code 请求（通过相似度检测）
+	isRealClaudeCode := claude.IsRealClaudeCodeRequest(parsed.System, claude.DefaultSystemPromptThreshold)
+
+	// 如果是真实的 Claude Code 请求，不需要注入
+	if isRealClaudeCode {
+		log.Printf("Detected real Claude Code request, skipping system prompt injection")
+		return body
+	}
+
 	claudeCodePrompt := map[string]any{
 		"type": "text",
-		"text": claudeCodeSystemPrompt,
+		"text": claude.ClaudeCodeSystemPrompt,
 		"cache_control": map[string]string{
 			"type": "ephemeral",
 		},
@@ -337,7 +346,7 @@ func (s *GatewayService) ensureClaudeCodeSystemPrompt(body []byte, parsed *Parse
 		switch v := parsed.System.(type) {
 		case string:
 			// 字符串格式：转换为数组
-			if v == claudeCodeSystemPrompt {
+			if v == claude.ClaudeCodeSystemPrompt {
 				// 已经是 Claude Code 提示词，只保留一个
 				req["system"] = []any{claudeCodePrompt}
 			} else {
@@ -352,7 +361,7 @@ func (s *GatewayService) ensureClaudeCodeSystemPrompt(body []byte, parsed *Parse
 			isFirstClaudeCode := false
 			if len(v) > 0 {
 				if first, ok := v[0].(map[string]any); ok {
-					if text, ok := first["text"].(string); ok && text == claudeCodeSystemPrompt {
+					if text, ok := first["text"].(string); ok && text == claude.ClaudeCodeSystemPrompt {
 						isFirstClaudeCode = true
 					}
 				}
@@ -363,7 +372,7 @@ func (s *GatewayService) ensureClaudeCodeSystemPrompt(body []byte, parsed *Parse
 				filtered = append(filtered, claudeCodePrompt)
 				for _, item := range v {
 					if itemMap, ok := item.(map[string]any); ok {
-						if text, ok := itemMap["text"].(string); ok && text == claudeCodeSystemPrompt {
+						if text, ok := itemMap["text"].(string); ok && text == claude.ClaudeCodeSystemPrompt {
 							continue // 跳过重复的 Claude Code 提示词
 						}
 					}
@@ -1037,21 +1046,9 @@ func (s *GatewayService) Forward(ctx context.Context, c *gin.Context, account *A
 	reqModel := parsed.Model
 	reqStream := parsed.Stream
 
-	// OAuth 账号：强制在 system 第一位插入 Claude Code 提示词（模拟 Claude Code 客户端）
-	if account.IsOAuth() {
-		body = s.ensureClaudeCodeSystemPrompt(body, parsed)
-	} else if !parsed.HasSystem {
-		// 非 OAuth 账号：只有没有 system 时才添加默认提示词
-		body, _ = sjson.SetBytes(body, "system", []any{
-			map[string]any{
-				"type": "text",
-				"text": "You are Claude Code, Anthropic's official CLI for Claude.",
-				"cache_control": map[string]string{
-					"type": "ephemeral",
-				},
-			},
-		})
-	}
+	// 统一使用相似度检测来判断是否需要注入 Claude Code 系统提示词
+	// 参考 claude-relay-service 的实现：不再基于账号类型判断，而是基于请求内容
+	body = s.ensureClaudeCodeSystemPrompt(body, parsed)
 
 	// Claude API 只允许 temperature 或 top_p 其中之一，优先使用 temperature
 	// 直接删除 top_p，与 claude-relay-service 处理方式一致
