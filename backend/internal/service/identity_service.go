@@ -10,7 +10,6 @@ import (
 	"log"
 	"net/http"
 	"regexp"
-	"strconv"
 	"time"
 )
 
@@ -18,11 +17,9 @@ import (
 var (
 	// 匹配 user_id 格式: user_{64位hex}_account__session_{uuid}
 	userIDRegex = regexp.MustCompile(`^user_[a-f0-9]{64}_account__session_([a-f0-9-]{36})$`)
-	// 匹配 User-Agent 版本号: xxx/x.y.z
-	userAgentVersionRegex = regexp.MustCompile(`/(\d+)\.(\d+)\.(\d+)`)
 )
 
-// 默认指纹值（当客户端未提供时使用）
+// 默认指纹值（Claude Code 客户端特征）
 var defaultFingerprint = Fingerprint{
 	UserAgent:               "claude-cli/2.0.62 (external, cli)",
 	StainlessLang:           "js",
@@ -123,7 +120,7 @@ func (s *IdentityService) GetOrCreateFingerprint(ctx context.Context, accountID 
 // createFingerprintFromHeaders 从请求头创建指纹
 // 为了确保 OAuth token 正常工作，强制使用 Claude Code 客户端特征
 // 不再透传客户端（如 SillyTavern）的 User-Agent，避免 API 检测到不一致而拒绝请求
-func (s *IdentityService) createFingerprintFromHeaders(headers http.Header) *Fingerprint {
+func (s *IdentityService) createFingerprintFromHeaders(_ http.Header) *Fingerprint {
 	fp := &Fingerprint{}
 
 	// 强制使用 Claude Code User-Agent（不透传客户端 User-Agent）
@@ -140,14 +137,6 @@ func (s *IdentityService) createFingerprintFromHeaders(headers http.Header) *Fin
 	fp.StainlessRuntimeVersion = defaultFingerprint.StainlessRuntimeVersion
 
 	return fp
-}
-
-// getHeaderOrDefault 获取header值，如果不存在则返回默认值
-func getHeaderOrDefault(headers http.Header, key, defaultValue string) string {
-	if v := headers.Get(key); v != "" {
-		return v
-	}
-	return defaultValue
 }
 
 // ApplyFingerprint 将指纹应用到请求头（覆盖原有的x-stainless-*头）
@@ -252,45 +241,4 @@ func generateUUIDFromSeed(seed string) string {
 
 	return fmt.Sprintf("%x-%x-%x-%x-%x",
 		bytes[0:4], bytes[4:6], bytes[6:8], bytes[8:10], bytes[10:16])
-}
-
-// parseUserAgentVersion 解析user-agent版本号
-// 例如：claude-cli/2.0.62 -> (2, 0, 62)
-func parseUserAgentVersion(ua string) (major, minor, patch int, ok bool) {
-	// 匹配 xxx/x.y.z 格式
-	matches := userAgentVersionRegex.FindStringSubmatch(ua)
-	if len(matches) != 4 {
-		return 0, 0, 0, false
-	}
-	major, _ = strconv.Atoi(matches[1])
-	minor, _ = strconv.Atoi(matches[2])
-	patch, _ = strconv.Atoi(matches[3])
-	return major, minor, patch, true
-}
-
-// isNewerVersion 比较版本号，判断newUA是否比cachedUA更新
-func isNewerVersion(newUA, cachedUA string) bool {
-	newMajor, newMinor, newPatch, newOk := parseUserAgentVersion(newUA)
-	cachedMajor, cachedMinor, cachedPatch, cachedOk := parseUserAgentVersion(cachedUA)
-
-	if !newOk || !cachedOk {
-		return false
-	}
-
-	// 比较版本号
-	if newMajor > cachedMajor {
-		return true
-	}
-	if newMajor < cachedMajor {
-		return false
-	}
-
-	if newMinor > cachedMinor {
-		return true
-	}
-	if newMinor < cachedMinor {
-		return false
-	}
-
-	return newPatch > cachedPatch
 }
