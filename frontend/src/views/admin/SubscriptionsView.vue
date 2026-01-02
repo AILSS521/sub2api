@@ -1,0 +1,894 @@
+<template>
+  <AppLayout>
+    <TablePageLayout>
+      <!-- Page Header Actions -->
+      <template #actions>
+      <div class="flex justify-end gap-3">
+        <button
+          @click="loadSubscriptions"
+          :disabled="loading"
+          class="btn btn-secondary"
+          :title="t('common.refresh')"
+        >
+          <svg
+            :class="['h-5 w-5', loading ? 'animate-spin' : '']"
+            fill="none"
+            viewBox="0 0 24 24"
+            stroke="currentColor"
+            stroke-width="1.5"
+          >
+            <path
+              stroke-linecap="round"
+              stroke-linejoin="round"
+              d="M16.023 9.348h4.992v-.001M2.985 19.644v-4.992m0 0h4.992m-4.993 0l3.181 3.183a8.25 8.25 0 0013.803-3.7M4.031 9.865a8.25 8.25 0 0113.803-3.7l3.181 3.182m0-4.991v4.99"
+            />
+          </svg>
+        </button>
+        <button @click="showAssignModal = true" class="btn btn-primary">
+          <svg
+            class="mr-2 h-5 w-5"
+            fill="none"
+            viewBox="0 0 24 24"
+            stroke="currentColor"
+            stroke-width="1.5"
+          >
+            <path stroke-linecap="round" stroke-linejoin="round" d="M12 4.5v15m7.5-7.5h-15" />
+          </svg>
+          {{ t('admin.subscriptions.assignSubscription') }}
+        </button>
+      </div>
+      </template>
+
+      <!-- Filters -->
+      <template #filters>
+      <div class="flex flex-wrap gap-3">
+        <Select
+          v-model="filters.status"
+          :options="statusOptions"
+          :placeholder="t('admin.subscriptions.allStatus')"
+          class="w-40"
+          @change="loadSubscriptions"
+        />
+        <Select
+          v-model="filters.group_id"
+          :options="groupOptions"
+          :placeholder="t('admin.subscriptions.allGroups')"
+          class="w-48"
+          @change="loadSubscriptions"
+        />
+      </div>
+      </template>
+
+      <!-- Subscriptions Table -->
+      <template #table>
+        <DataTable :columns="columns" :data="subscriptions" :loading="loading">
+          <template #cell-user="{ row }">
+            <div class="flex items-center gap-2">
+              <div
+                class="flex h-8 w-8 items-center justify-center rounded-full bg-primary-100 dark:bg-primary-900/30"
+              >
+                <span class="text-sm font-medium text-primary-700 dark:text-primary-300">
+                  {{ row.user?.email?.charAt(0).toUpperCase() || '?' }}
+                </span>
+              </div>
+              <span class="font-medium text-gray-900 dark:text-white">{{
+                row.user?.email || `User #${row.user_id}`
+              }}</span>
+            </div>
+          </template>
+
+          <template #cell-group="{ row }">
+            <GroupBadge
+              v-if="row.group"
+              :name="row.group.name"
+              :platform="row.group.platform"
+              :subscription-type="row.group.subscription_type"
+              :rate-multiplier="row.group.rate_multiplier"
+              :show-rate="false"
+            />
+            <span v-else class="text-sm text-gray-400 dark:text-dark-500">-</span>
+          </template>
+
+          <template #cell-usage="{ row }">
+            <div class="min-w-[280px] space-y-2">
+              <!-- Daily Usage -->
+              <div v-if="row.group?.daily_limit_usd" class="usage-row">
+                <div class="flex items-center gap-2">
+                  <span class="usage-label">{{ t('admin.subscriptions.daily') }}</span>
+                  <div class="h-1.5 flex-1 rounded-full bg-gray-200 dark:bg-dark-600">
+                    <div
+                      class="h-1.5 rounded-full transition-all"
+                      :class="getProgressClass(row.daily_usage_usd, row.group?.daily_limit_usd)"
+                      :style="{
+                        width: getProgressWidth(row.daily_usage_usd, row.group?.daily_limit_usd)
+                      }"
+                    ></div>
+                  </div>
+                  <span class="usage-amount">
+                    ${{ row.daily_usage_usd?.toFixed(2) || '0.00' }}
+                    <span class="text-gray-400">/</span>
+                    ${{ row.group?.daily_limit_usd?.toFixed(2) }}
+                  </span>
+                </div>
+                <div class="reset-info" v-if="row.daily_window_start">
+                  <svg
+                    class="h-3 w-3"
+                    fill="none"
+                    viewBox="0 0 24 24"
+                    stroke="currentColor"
+                    stroke-width="2"
+                  >
+                    <path
+                      stroke-linecap="round"
+                      stroke-linejoin="round"
+                      d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z"
+                    />
+                  </svg>
+                  <span>{{ formatResetTime(row.daily_window_start, 'daily') }}</span>
+                </div>
+              </div>
+
+              <!-- Weekly Usage -->
+              <div v-if="row.group?.weekly_limit_usd" class="usage-row">
+                <div class="flex items-center gap-2">
+                  <span class="usage-label">{{ t('admin.subscriptions.weekly') }}</span>
+                  <div class="h-1.5 flex-1 rounded-full bg-gray-200 dark:bg-dark-600">
+                    <div
+                      class="h-1.5 rounded-full transition-all"
+                      :class="getProgressClass(row.weekly_usage_usd, row.group?.weekly_limit_usd)"
+                      :style="{
+                        width: getProgressWidth(row.weekly_usage_usd, row.group?.weekly_limit_usd)
+                      }"
+                    ></div>
+                  </div>
+                  <span class="usage-amount">
+                    ${{ row.weekly_usage_usd?.toFixed(2) || '0.00' }}
+                    <span class="text-gray-400">/</span>
+                    ${{ row.group?.weekly_limit_usd?.toFixed(2) }}
+                  </span>
+                </div>
+                <div class="reset-info" v-if="row.weekly_window_start">
+                  <svg
+                    class="h-3 w-3"
+                    fill="none"
+                    viewBox="0 0 24 24"
+                    stroke="currentColor"
+                    stroke-width="2"
+                  >
+                    <path
+                      stroke-linecap="round"
+                      stroke-linejoin="round"
+                      d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z"
+                    />
+                  </svg>
+                  <span>{{ formatResetTime(row.weekly_window_start, 'weekly') }}</span>
+                </div>
+              </div>
+
+              <!-- Monthly Usage -->
+              <div v-if="row.group?.monthly_limit_usd" class="usage-row">
+                <div class="flex items-center gap-2">
+                  <span class="usage-label">{{ t('admin.subscriptions.monthly') }}</span>
+                  <div class="h-1.5 flex-1 rounded-full bg-gray-200 dark:bg-dark-600">
+                    <div
+                      class="h-1.5 rounded-full transition-all"
+                      :class="getProgressClass(row.monthly_usage_usd, row.group?.monthly_limit_usd)"
+                      :style="{
+                        width: getProgressWidth(row.monthly_usage_usd, row.group?.monthly_limit_usd)
+                      }"
+                    ></div>
+                  </div>
+                  <span class="usage-amount">
+                    ${{ row.monthly_usage_usd?.toFixed(2) || '0.00' }}
+                    <span class="text-gray-400">/</span>
+                    ${{ row.group?.monthly_limit_usd?.toFixed(2) }}
+                  </span>
+                </div>
+                <div class="reset-info" v-if="row.monthly_window_start">
+                  <svg
+                    class="h-3 w-3"
+                    fill="none"
+                    viewBox="0 0 24 24"
+                    stroke="currentColor"
+                    stroke-width="2"
+                  >
+                    <path
+                      stroke-linecap="round"
+                      stroke-linejoin="round"
+                      d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z"
+                    />
+                  </svg>
+                  <span>{{ formatResetTime(row.monthly_window_start, 'monthly') }}</span>
+                </div>
+              </div>
+
+              <!-- No Limits - Unlimited badge -->
+              <div
+                v-if="
+                  !row.group?.daily_limit_usd &&
+                  !row.group?.weekly_limit_usd &&
+                  !row.group?.monthly_limit_usd
+                "
+                class="flex items-center gap-2 rounded-lg bg-gradient-to-r from-emerald-50 to-teal-50 px-3 py-2 dark:from-emerald-900/20 dark:to-teal-900/20"
+              >
+                <span class="text-lg text-emerald-600 dark:text-emerald-400">∞</span>
+                <span class="text-xs font-medium text-emerald-700 dark:text-emerald-300">
+                  {{ t('admin.subscriptions.unlimited') }}
+                </span>
+              </div>
+            </div>
+          </template>
+
+          <template #cell-expires_at="{ value }">
+            <div v-if="value">
+              <span
+                class="text-sm"
+                :class="
+                  isExpiringSoon(value)
+                    ? 'text-orange-600 dark:text-orange-400'
+                    : 'text-gray-700 dark:text-gray-300'
+                "
+              >
+                {{ formatDateOnly(value) }}
+              </span>
+              <div v-if="getDaysRemaining(value) !== null" class="text-xs text-gray-500">
+                {{ getDaysRemaining(value) }} {{ t('admin.subscriptions.daysRemaining') }}
+              </div>
+            </div>
+            <span v-else class="text-sm text-gray-500">{{
+              t('admin.subscriptions.noExpiration')
+            }}</span>
+          </template>
+
+          <template #cell-status="{ value }">
+            <span
+              :class="[
+                'badge',
+                value === 'active'
+                  ? 'badge-success'
+                  : value === 'expired'
+                    ? 'badge-warning'
+                    : 'badge-danger'
+              ]"
+            >
+              {{ t(`admin.subscriptions.status.${value}`) }}
+            </span>
+          </template>
+
+          <template #cell-actions="{ row }">
+            <div class="flex items-center gap-1">
+              <button
+                v-if="row.status === 'active'"
+                @click="handleExtend(row)"
+                class="flex flex-col items-center gap-0.5 rounded-lg p-1.5 text-gray-500 transition-colors hover:bg-green-50 hover:text-green-600 dark:hover:bg-green-900/20 dark:hover:text-green-400"
+              >
+                <svg
+                  class="h-4 w-4"
+                  fill="none"
+                  stroke="currentColor"
+                  viewBox="0 0 24 24"
+                  stroke-width="1.5"
+                >
+                  <path
+                    stroke-linecap="round"
+                    stroke-linejoin="round"
+                    d="M12 6v6h4.5m4.5 0a9 9 0 11-18 0 9 9 0 0118 0z"
+                  />
+                </svg>
+                <span class="text-xs">{{ t('admin.subscriptions.extend') }}</span>
+              </button>
+              <button
+                v-if="row.status === 'active'"
+                @click="handleRevoke(row)"
+                class="flex flex-col items-center gap-0.5 rounded-lg p-1.5 text-gray-500 transition-colors hover:bg-red-50 hover:text-red-600 dark:hover:bg-red-900/20 dark:hover:text-red-400"
+              >
+                <svg
+                  class="h-4 w-4"
+                  fill="none"
+                  stroke="currentColor"
+                  viewBox="0 0 24 24"
+                  stroke-width="1.5"
+                >
+                  <path
+                    stroke-linecap="round"
+                    stroke-linejoin="round"
+                    d="M18.364 18.364A9 9 0 005.636 5.636m12.728 12.728A9 9 0 015.636 5.636m12.728 12.728L5.636 5.636"
+                  />
+                </svg>
+                <span class="text-xs">{{ t('admin.subscriptions.revoke') }}</span>
+              </button>
+            </div>
+          </template>
+
+          <template #empty>
+            <EmptyState
+              :title="t('admin.subscriptions.noSubscriptionsYet')"
+              :description="t('admin.subscriptions.assignFirstSubscription')"
+              :action-text="t('admin.subscriptions.assignSubscription')"
+              @action="showAssignModal = true"
+            />
+          </template>
+        </DataTable>
+      </template>
+
+      <!-- Pagination -->
+      <template #pagination>
+      <Pagination
+        v-if="pagination.total > 0"
+        :page="pagination.page"
+        :total="pagination.total"
+        :page-size="pagination.page_size"
+        @update:page="handlePageChange"
+        @update:pageSize="handlePageSizeChange"
+      />
+      </template>
+    </TablePageLayout>
+
+    <!-- Assign Subscription Modal -->
+    <BaseDialog
+      :show="showAssignModal"
+      :title="t('admin.subscriptions.assignSubscription')"
+      width="normal"
+      @close="closeAssignModal"
+    >
+      <form
+        id="assign-subscription-form"
+        @submit.prevent="handleAssignSubscription"
+        class="space-y-5"
+      >
+        <div>
+          <label class="input-label">{{ t('admin.subscriptions.form.user') }}</label>
+          <div class="relative">
+            <input
+              v-model="userSearchKeyword"
+              type="text"
+              class="input pr-8"
+              :placeholder="t('admin.usage.searchUserPlaceholder')"
+              @input="debounceSearchUsers"
+              @focus="showUserDropdown = true"
+            />
+            <button
+              v-if="selectedUser"
+              @click="clearUserSelection"
+              type="button"
+              class="absolute right-2 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600 dark:hover:text-gray-300"
+            >
+              <svg class="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path
+                  stroke-linecap="round"
+                  stroke-linejoin="round"
+                  stroke-width="2"
+                  d="M6 18L18 6M6 6l12 12"
+                />
+              </svg>
+            </button>
+            <!-- User Dropdown -->
+            <div
+              v-if="showUserDropdown && (userSearchResults.length > 0 || userSearchKeyword)"
+              class="absolute z-50 mt-1 max-h-60 w-full overflow-auto rounded-lg border border-gray-200 bg-white shadow-lg dark:border-gray-700 dark:bg-gray-800"
+            >
+              <div
+                v-if="userSearchLoading"
+                class="px-4 py-3 text-sm text-gray-500 dark:text-gray-400"
+              >
+                {{ t('common.loading') }}
+              </div>
+              <div
+                v-else-if="userSearchResults.length === 0 && userSearchKeyword"
+                class="px-4 py-3 text-sm text-gray-500 dark:text-gray-400"
+              >
+                {{ t('common.noOptionsFound') }}
+              </div>
+              <button
+                v-for="user in userSearchResults"
+                :key="user.id"
+                type="button"
+                @click="selectUser(user)"
+                class="w-full px-4 py-2 text-left text-sm hover:bg-gray-100 dark:hover:bg-gray-700"
+              >
+                <span class="font-medium text-gray-900 dark:text-white">{{ user.email }}</span>
+                <span class="ml-2 text-gray-500 dark:text-gray-400">#{{ user.id }}</span>
+              </button>
+            </div>
+          </div>
+        </div>
+        <div>
+          <label class="input-label">{{ t('admin.subscriptions.form.group') }}</label>
+          <Select
+            v-model="assignForm.group_id"
+            :options="subscriptionGroupOptions"
+            :placeholder="t('admin.subscriptions.selectGroup')"
+          />
+          <p class="input-hint">{{ t('admin.subscriptions.groupHint') }}</p>
+        </div>
+        <div>
+          <label class="input-label">{{ t('admin.subscriptions.form.validityDays') }}</label>
+          <input v-model.number="assignForm.validity_days" type="number" min="1" class="input" />
+          <p class="input-hint">{{ t('admin.subscriptions.validityHint') }}</p>
+        </div>
+      </form>
+      <template #footer>
+        <div class="flex justify-end gap-3">
+          <button @click="closeAssignModal" type="button" class="btn btn-secondary">
+            {{ t('common.cancel') }}
+          </button>
+          <button
+            type="submit"
+            form="assign-subscription-form"
+            :disabled="submitting"
+            class="btn btn-primary"
+          >
+            <svg
+              v-if="submitting"
+              class="-ml-1 mr-2 h-4 w-4 animate-spin"
+              fill="none"
+              viewBox="0 0 24 24"
+            >
+              <circle
+                class="opacity-25"
+                cx="12"
+                cy="12"
+                r="10"
+                stroke="currentColor"
+                stroke-width="4"
+              ></circle>
+              <path
+                class="opacity-75"
+                fill="currentColor"
+                d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"
+              ></path>
+            </svg>
+            {{ submitting ? t('admin.subscriptions.assigning') : t('admin.subscriptions.assign') }}
+          </button>
+        </div>
+      </template>
+    </BaseDialog>
+
+    <!-- Extend Subscription Modal -->
+    <BaseDialog
+      :show="showExtendModal"
+      :title="t('admin.subscriptions.extendSubscription')"
+      width="narrow"
+      @close="closeExtendModal"
+    >
+      <form
+        v-if="extendingSubscription"
+        id="extend-subscription-form"
+        @submit.prevent="handleExtendSubscription"
+        class="space-y-5"
+      >
+        <div class="rounded-lg bg-gray-50 p-4 dark:bg-dark-700">
+          <p class="text-sm text-gray-600 dark:text-gray-400">
+            {{ t('admin.subscriptions.extendingFor') }}
+            <span class="font-medium text-gray-900 dark:text-white">{{
+              extendingSubscription.user?.email
+            }}</span>
+          </p>
+          <p class="mt-1 text-sm text-gray-600 dark:text-gray-400">
+            {{ t('admin.subscriptions.currentExpiration') }}:
+            <span class="font-medium text-gray-900 dark:text-white">
+              {{
+                extendingSubscription.expires_at
+                  ? formatDateOnly(extendingSubscription.expires_at)
+                  : t('admin.subscriptions.noExpiration')
+              }}
+            </span>
+          </p>
+        </div>
+        <div>
+          <label class="input-label">{{ t('admin.subscriptions.form.extendDays') }}</label>
+          <input v-model.number="extendForm.days" type="number" min="1" required class="input" />
+        </div>
+      </form>
+      <template #footer>
+        <div v-if="extendingSubscription" class="flex justify-end gap-3">
+          <button @click="closeExtendModal" type="button" class="btn btn-secondary">
+            {{ t('common.cancel') }}
+          </button>
+          <button
+            type="submit"
+            form="extend-subscription-form"
+            :disabled="submitting"
+            class="btn btn-primary"
+          >
+            {{ submitting ? t('admin.subscriptions.extending') : t('admin.subscriptions.extend') }}
+          </button>
+        </div>
+      </template>
+    </BaseDialog>
+
+    <!-- Revoke Confirmation Dialog -->
+    <ConfirmDialog
+      :show="showRevokeDialog"
+      :title="t('admin.subscriptions.revokeSubscription')"
+      :message="t('admin.subscriptions.revokeConfirm', { user: revokingSubscription?.user?.email })"
+      :confirm-text="t('admin.subscriptions.revoke')"
+      :cancel-text="t('common.cancel')"
+      :danger="true"
+      @confirm="confirmRevoke"
+      @cancel="showRevokeDialog = false"
+    />
+  </AppLayout>
+</template>
+
+<script setup lang="ts">
+import { ref, reactive, computed, onMounted, onUnmounted } from 'vue'
+import { useI18n } from 'vue-i18n'
+import { useAppStore } from '@/stores/app'
+import { adminAPI } from '@/api/admin'
+import type { UserSubscription, Group } from '@/types'
+import type { SimpleUser } from '@/api/admin/usage'
+import type { Column } from '@/components/common/types'
+import { formatDateOnly } from '@/utils/format'
+import AppLayout from '@/components/layout/AppLayout.vue'
+import TablePageLayout from '@/components/layout/TablePageLayout.vue'
+import DataTable from '@/components/common/DataTable.vue'
+import Pagination from '@/components/common/Pagination.vue'
+import BaseDialog from '@/components/common/BaseDialog.vue'
+import ConfirmDialog from '@/components/common/ConfirmDialog.vue'
+import EmptyState from '@/components/common/EmptyState.vue'
+import Select from '@/components/common/Select.vue'
+import GroupBadge from '@/components/common/GroupBadge.vue'
+
+const { t } = useI18n()
+const appStore = useAppStore()
+
+const columns = computed<Column[]>(() => [
+  { key: 'user', label: t('admin.subscriptions.columns.user'), sortable: true },
+  { key: 'group', label: t('admin.subscriptions.columns.group'), sortable: true },
+  { key: 'usage', label: t('admin.subscriptions.columns.usage'), sortable: false },
+  { key: 'expires_at', label: t('admin.subscriptions.columns.expires'), sortable: true },
+  { key: 'status', label: t('admin.subscriptions.columns.status'), sortable: true },
+  { key: 'actions', label: t('admin.subscriptions.columns.actions'), sortable: false }
+])
+
+// Filter options
+const statusOptions = computed(() => [
+  { value: '', label: t('admin.subscriptions.allStatus') },
+  { value: 'active', label: t('admin.subscriptions.status.active') },
+  { value: 'expired', label: t('admin.subscriptions.status.expired') },
+  { value: 'revoked', label: t('admin.subscriptions.status.revoked') }
+])
+
+const subscriptions = ref<UserSubscription[]>([])
+const groups = ref<Group[]>([])
+const loading = ref(false)
+let abortController: AbortController | null = null
+
+// User search state
+const userSearchKeyword = ref('')
+const userSearchResults = ref<SimpleUser[]>([])
+const userSearchLoading = ref(false)
+const showUserDropdown = ref(false)
+const selectedUser = ref<SimpleUser | null>(null)
+let userSearchTimeout: ReturnType<typeof setTimeout> | null = null
+
+const filters = reactive({
+  status: '',
+  group_id: ''
+})
+const pagination = reactive({
+  page: 1,
+  page_size: 20,
+  total: 0,
+  pages: 0
+})
+
+const showAssignModal = ref(false)
+const showExtendModal = ref(false)
+const showRevokeDialog = ref(false)
+const submitting = ref(false)
+const extendingSubscription = ref<UserSubscription | null>(null)
+const revokingSubscription = ref<UserSubscription | null>(null)
+
+const assignForm = reactive({
+  user_id: null as number | null,
+  group_id: null as number | null,
+  validity_days: 30
+})
+
+const extendForm = reactive({
+  days: 30
+})
+
+// Group options for filter (all groups)
+const groupOptions = computed(() => [
+  { value: '', label: t('admin.subscriptions.allGroups') },
+  ...groups.value.map((g) => ({ value: g.id.toString(), label: g.name }))
+])
+
+// Group options for assign (only subscription type groups)
+const subscriptionGroupOptions = computed(() =>
+  groups.value
+    .filter((g) => g.subscription_type === 'subscription' && g.status === 'active')
+    .map((g) => ({ value: g.id, label: g.name }))
+)
+
+const loadSubscriptions = async () => {
+  if (abortController) {
+    abortController.abort()
+  }
+  const requestController = new AbortController()
+  abortController = requestController
+  const { signal } = requestController
+
+  loading.value = true
+  try {
+    const response = await adminAPI.subscriptions.list(pagination.page, pagination.page_size, {
+      status: (filters.status as any) || undefined,
+      group_id: filters.group_id ? parseInt(filters.group_id) : undefined
+    }, {
+      signal
+    })
+    if (signal.aborted || abortController !== requestController) return
+    subscriptions.value = response.items
+    pagination.total = response.total
+    pagination.pages = response.pages
+  } catch (error: any) {
+    if (signal.aborted || error?.name === 'AbortError' || error?.code === 'ERR_CANCELED') {
+      return
+    }
+    appStore.showError(t('admin.subscriptions.failedToLoad'))
+    console.error('Error loading subscriptions:', error)
+  } finally {
+    if (abortController === requestController) {
+      loading.value = false
+      abortController = null
+    }
+  }
+}
+
+const loadGroups = async () => {
+  try {
+    groups.value = await adminAPI.groups.getAll()
+  } catch (error) {
+    console.error('Error loading groups:', error)
+  }
+}
+
+// User search with debounce
+const debounceSearchUsers = () => {
+  if (userSearchTimeout) {
+    clearTimeout(userSearchTimeout)
+  }
+  userSearchTimeout = setTimeout(searchUsers, 300)
+}
+
+const searchUsers = async () => {
+  const keyword = userSearchKeyword.value.trim()
+
+  // Clear selection if user modified the search keyword
+  if (selectedUser.value && keyword !== selectedUser.value.email) {
+    selectedUser.value = null
+    assignForm.user_id = null
+  }
+
+  if (!keyword) {
+    userSearchResults.value = []
+    return
+  }
+
+  userSearchLoading.value = true
+  try {
+    userSearchResults.value = await adminAPI.usage.searchUsers(keyword)
+  } catch (error) {
+    console.error('Failed to search users:', error)
+    userSearchResults.value = []
+  } finally {
+    userSearchLoading.value = false
+  }
+}
+
+const selectUser = (user: SimpleUser) => {
+  selectedUser.value = user
+  userSearchKeyword.value = user.email
+  showUserDropdown.value = false
+  assignForm.user_id = user.id
+}
+
+const clearUserSelection = () => {
+  selectedUser.value = null
+  userSearchKeyword.value = ''
+  userSearchResults.value = []
+  assignForm.user_id = null
+}
+
+const handlePageChange = (page: number) => {
+  pagination.page = page
+  loadSubscriptions()
+}
+
+const handlePageSizeChange = (pageSize: number) => {
+  pagination.page_size = pageSize
+  pagination.page = 1
+  loadSubscriptions()
+}
+
+const closeAssignModal = () => {
+  showAssignModal.value = false
+  assignForm.user_id = null
+  assignForm.group_id = null
+  assignForm.validity_days = 30
+  // Clear user search state
+  selectedUser.value = null
+  userSearchKeyword.value = ''
+  userSearchResults.value = []
+  showUserDropdown.value = false
+}
+
+const handleAssignSubscription = async () => {
+  if (!assignForm.user_id || !assignForm.group_id) return
+
+  submitting.value = true
+  try {
+    await adminAPI.subscriptions.assign({
+      user_id: assignForm.user_id,
+      group_id: assignForm.group_id,
+      validity_days: assignForm.validity_days
+    })
+    appStore.showSuccess(t('admin.subscriptions.subscriptionAssigned'))
+    closeAssignModal()
+    loadSubscriptions()
+  } catch (error: any) {
+    appStore.showError(error.response?.data?.detail || t('admin.subscriptions.failedToAssign'))
+    console.error('Error assigning subscription:', error)
+  } finally {
+    submitting.value = false
+  }
+}
+
+const handleExtend = (subscription: UserSubscription) => {
+  extendingSubscription.value = subscription
+  extendForm.days = 30
+  showExtendModal.value = true
+}
+
+const closeExtendModal = () => {
+  showExtendModal.value = false
+  extendingSubscription.value = null
+}
+
+const handleExtendSubscription = async () => {
+  if (!extendingSubscription.value) return
+
+  submitting.value = true
+  try {
+    await adminAPI.subscriptions.extend(extendingSubscription.value.id, {
+      days: extendForm.days
+    })
+    appStore.showSuccess(t('admin.subscriptions.subscriptionExtended'))
+    closeExtendModal()
+    loadSubscriptions()
+  } catch (error: any) {
+    appStore.showError(error.response?.data?.detail || t('admin.subscriptions.failedToExtend'))
+    console.error('Error extending subscription:', error)
+  } finally {
+    submitting.value = false
+  }
+}
+
+const handleRevoke = (subscription: UserSubscription) => {
+  revokingSubscription.value = subscription
+  showRevokeDialog.value = true
+}
+
+const confirmRevoke = async () => {
+  if (!revokingSubscription.value) return
+
+  try {
+    await adminAPI.subscriptions.revoke(revokingSubscription.value.id)
+    appStore.showSuccess(t('admin.subscriptions.subscriptionRevoked'))
+    showRevokeDialog.value = false
+    revokingSubscription.value = null
+    loadSubscriptions()
+  } catch (error: any) {
+    appStore.showError(error.response?.data?.detail || t('admin.subscriptions.failedToRevoke'))
+    console.error('Error revoking subscription:', error)
+  }
+}
+
+// Helper functions
+const getDaysRemaining = (expiresAt: string): number | null => {
+  const now = new Date()
+  const expires = new Date(expiresAt)
+  const diff = expires.getTime() - now.getTime()
+  if (diff < 0) return null
+  return Math.ceil(diff / (1000 * 60 * 60 * 24))
+}
+
+const isExpiringSoon = (expiresAt: string): boolean => {
+  const days = getDaysRemaining(expiresAt)
+  return days !== null && days <= 7
+}
+
+const getProgressWidth = (used: number, limit: number | null): string => {
+  if (!limit || limit === 0) return '0%'
+  const percentage = Math.min((used / limit) * 100, 100)
+  return `${percentage}%`
+}
+
+const getProgressClass = (used: number, limit: number | null): string => {
+  if (!limit || limit === 0) return 'bg-gray-400'
+  const percentage = (used / limit) * 100
+  if (percentage >= 90) return 'bg-red-500'
+  if (percentage >= 70) return 'bg-orange-500'
+  return 'bg-green-500'
+}
+
+// Format reset time based on window start and period type
+const formatResetTime = (windowStart: string, period: 'daily' | 'weekly' | 'monthly'): string => {
+  if (!windowStart) return t('admin.subscriptions.windowNotActive')
+
+  const start = new Date(windowStart)
+  const now = new Date()
+
+  // Calculate reset time based on period
+  let resetTime: Date
+  switch (period) {
+    case 'daily':
+      resetTime = new Date(start.getTime() + 24 * 60 * 60 * 1000)
+      break
+    case 'weekly':
+      resetTime = new Date(start.getTime() + 7 * 24 * 60 * 60 * 1000)
+      break
+    case 'monthly':
+      resetTime = new Date(start.getTime() + 30 * 24 * 60 * 60 * 1000)
+      break
+  }
+
+  const diffMs = resetTime.getTime() - now.getTime()
+  if (diffMs <= 0) return t('admin.subscriptions.windowNotActive')
+
+  const diffSeconds = Math.floor(diffMs / 1000)
+  const days = Math.floor(diffSeconds / 86400)
+  const hours = Math.floor((diffSeconds % 86400) / 3600)
+  const minutes = Math.floor((diffSeconds % 3600) / 60)
+
+  if (days > 0) {
+    return t('admin.subscriptions.resetInDaysHours', { days, hours })
+  } else if (hours > 0) {
+    return t('admin.subscriptions.resetInHoursMinutes', { hours, minutes })
+  } else {
+    return t('admin.subscriptions.resetInMinutes', { minutes })
+  }
+}
+
+// Handle click outside to close user dropdown
+const handleClickOutside = (event: MouseEvent) => {
+  const target = event.target as HTMLElement
+  if (!target.closest('.relative')) {
+    showUserDropdown.value = false
+  }
+}
+
+onMounted(() => {
+  loadSubscriptions()
+  loadGroups()
+  document.addEventListener('click', handleClickOutside)
+})
+
+onUnmounted(() => {
+  document.removeEventListener('click', handleClickOutside)
+  if (userSearchTimeout) {
+    clearTimeout(userSearchTimeout)
+  }
+})
+</script>
+
+<style scoped>
+.usage-row {
+  @apply space-y-1;
+}
+
+.usage-label {
+  @apply w-10 flex-shrink-0 text-xs font-medium text-gray-500 dark:text-gray-400;
+}
+
+.usage-amount {
+  @apply whitespace-nowrap text-xs tabular-nums text-gray-600 dark:text-gray-300;
+}
+
+.reset-info {
+  @apply flex items-center gap-1 pl-12 text-[10px] text-blue-600 dark:text-blue-400;
+}
+</style>
