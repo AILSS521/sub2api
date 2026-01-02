@@ -28,11 +28,11 @@ func normalizeText(s string) string {
 	for _, r := range s {
 		if unicode.IsSpace(r) {
 			if !lastSpace {
-				builder.WriteRune(' ')
+				_, _ = builder.WriteRune(' ')
 				lastSpace = true
 			}
 		} else {
-			builder.WriteRune(unicode.ToLower(r))
+			_, _ = builder.WriteRune(unicode.ToLower(r))
 			lastSpace = false
 		}
 	}
