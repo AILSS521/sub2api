@@ -310,6 +310,81 @@ func (s *GatewayService) replaceModelInBody(body []byte, newModel string) []byte
 	return newBody
 }
 
+// Claude Code 系统提示词
+const claudeCodeSystemPrompt = "You are Claude Code, Anthropic's official CLI for Claude."
+
+// ensureClaudeCodeSystemPrompt 确保 system 字段第一位是 Claude Code 提示词
+// 参考 claude-relay-service 的实现
+func (s *GatewayService) ensureClaudeCodeSystemPrompt(body []byte, parsed *ParsedRequest) []byte {
+	claudeCodePrompt := map[string]any{
+		"type": "text",
+		"text": claudeCodeSystemPrompt,
+		"cache_control": map[string]string{
+			"type": "ephemeral",
+		},
+	}
+
+	var req map[string]any
+	if err := json.Unmarshal(body, &req); err != nil {
+		return body
+	}
+
+	if !parsed.HasSystem {
+		// 没有 system，直接添加
+		req["system"] = []any{claudeCodePrompt}
+	} else {
+		// 有 system，需要在第一位插入
+		switch v := parsed.System.(type) {
+		case string:
+			// 字符串格式：转换为数组
+			if v == claudeCodeSystemPrompt {
+				// 已经是 Claude Code 提示词，只保留一个
+				req["system"] = []any{claudeCodePrompt}
+			} else {
+				userPrompt := map[string]any{
+					"type": "text",
+					"text": v,
+				}
+				req["system"] = []any{claudeCodePrompt, userPrompt}
+			}
+		case []any:
+			// 数组格式：检查第一位是否是 Claude Code 提示词
+			isFirstClaudeCode := false
+			if len(v) > 0 {
+				if first, ok := v[0].(map[string]any); ok {
+					if text, ok := first["text"].(string); ok && text == claudeCodeSystemPrompt {
+						isFirstClaudeCode = true
+					}
+				}
+			}
+			if !isFirstClaudeCode {
+				// 过滤掉其他位置的 Claude Code 提示词，然后在第一位插入
+				filtered := make([]any, 0, len(v)+1)
+				filtered = append(filtered, claudeCodePrompt)
+				for _, item := range v {
+					if itemMap, ok := item.(map[string]any); ok {
+						if text, ok := itemMap["text"].(string); ok && text == claudeCodeSystemPrompt {
+							continue // 跳过重复的 Claude Code 提示词
+						}
+					}
+					filtered = append(filtered, item)
+				}
+				req["system"] = filtered
+			}
+			// 如果第一位已经是 Claude Code 提示词，不需要修改
+		default:
+			// 其他格式，强制设置
+			req["system"] = []any{claudeCodePrompt}
+		}
+	}
+
+	newBody, err := json.Marshal(req)
+	if err != nil {
+		return body
+	}
+	return newBody
+}
+
 // SelectAccount 选择账号（粘性会话+优先级）
 func (s *GatewayService) SelectAccount(ctx context.Context, groupID *int64, sessionHash string) (*Account, error) {
 	return s.SelectAccountForModel(ctx, groupID, sessionHash, "")
@@ -962,7 +1037,11 @@ func (s *GatewayService) Forward(ctx context.Context, c *gin.Context, account *A
 	reqModel := parsed.Model
 	reqStream := parsed.Stream
 
-	if !parsed.HasSystem {
+	// OAuth 账号：强制在 system 第一位插入 Claude Code 提示词（模拟 Claude Code 客户端）
+	if account.IsOAuth() {
+		body = s.ensureClaudeCodeSystemPrompt(body, parsed)
+	} else if !parsed.HasSystem {
+		// 非 OAuth 账号：只有没有 system 时才添加默认提示词
 		body, _ = sjson.SetBytes(body, "system", []any{
 			map[string]any{
 				"type": "text",
