@@ -19,7 +19,7 @@ import (
 
 func NewClaudeOAuthClient() service.ClaudeOAuthClient {
 	return &claudeOAuthService{
-		baseURL:       "https://claude.ai",
+		baseURL:       "https://api.anthropic.com",
 		tokenURL:      oauth.TokenURL,
 		clientFactory: createReqClient,
 	}
@@ -34,11 +34,18 @@ type claudeOAuthService struct {
 func (s *claudeOAuthService) GetOrganizationUUID(ctx context.Context, sessionKey, proxyURL string) (string, error) {
 	client := s.clientFactory(proxyURL)
 
-	var orgs []struct {
-		UUID string `json:"uuid"`
+	var bootstrap struct {
+		Account struct {
+			Memberships []struct {
+				Organization struct {
+					UUID         string   `json:"uuid"`
+					Capabilities []string `json:"capabilities"`
+				} `json:"organization"`
+			} `json:"memberships"`
+		} `json:"account"`
 	}
 
-	targetURL := s.baseURL + "/api/organizations"
+	targetURL := s.baseURL + "/api/bootstrap"
 	log.Printf("[OAuth] Step 1: Getting organization UUID from %s", targetURL)
 
 	resp, err := client.R().
@@ -47,7 +54,7 @@ func (s *claudeOAuthService) GetOrganizationUUID(ctx context.Context, sessionKey
 			Name:  "sessionKey",
 			Value: sessionKey,
 		}).
-		SetSuccessResult(&orgs).
+		SetSuccessResult(&bootstrap).
 		Get(targetURL)
 
 	if err != nil {
@@ -58,15 +65,20 @@ func (s *claudeOAuthService) GetOrganizationUUID(ctx context.Context, sessionKey
 	log.Printf("[OAuth] Step 1 Response - Status: %d", resp.StatusCode)
 
 	if !resp.IsSuccessState() {
-		return "", fmt.Errorf("failed to get organizations: status %d, body: %s", resp.StatusCode, resp.String())
+		return "", fmt.Errorf("failed to get bootstrap: status %d, body: %s", resp.StatusCode, resp.String())
 	}
 
-	if len(orgs) == 0 {
-		return "", fmt.Errorf("no organizations found")
+	// Find organization with chat capability
+	for _, membership := range bootstrap.Account.Memberships {
+		for _, cap := range membership.Organization.Capabilities {
+			if cap == "chat" {
+				log.Printf("[OAuth] Step 1 SUCCESS - Got org UUID: %s", membership.Organization.UUID)
+				return membership.Organization.UUID, nil
+			}
+		}
 	}
 
-	log.Printf("[OAuth] Step 1 SUCCESS - Got org UUID: %s", orgs[0].UUID)
-	return orgs[0].UUID, nil
+	return "", fmt.Errorf("no organization with chat capability found")
 }
 
 func (s *claudeOAuthService) GetAuthorizationCode(ctx context.Context, sessionKey, orgUUID, scope, codeChallenge, state, proxyURL string) (string, error) {
@@ -102,8 +114,8 @@ func (s *claudeOAuthService) GetAuthorizationCode(ctx context.Context, sessionKe
 		SetHeader("Accept", "application/json").
 		SetHeader("Accept-Language", "en-US,en;q=0.9").
 		SetHeader("Cache-Control", "no-cache").
-		SetHeader("Origin", "https://claude.ai").
-		SetHeader("Referer", "https://claude.ai/new").
+		SetHeader("Origin", "https://api.anthropic.com").
+		SetHeader("Referer", "https://api.anthropic.com/new").
 		SetHeader("Content-Type", "application/json").
 		SetBody(reqBody).
 		SetSuccessResult(&result).
