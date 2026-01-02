@@ -1129,16 +1129,32 @@ func (s *GatewayService) buildUpstreamRequest(ctx context.Context, c *gin.Contex
 			// 失败时降级为透传原始headers
 		} else {
 			fingerprint = fp
+			log.Printf("[DEBUG] Account %d fingerprint: ClientID=%s", account.ID, fp.ClientID)
 
 			// 2. 重写metadata.user_id（需要指纹中的ClientID和账号的account_uuid）
 			accountUUID := account.GetExtraString("account_uuid")
+			log.Printf("[DEBUG] Account %d account_uuid: %s", account.ID, accountUUID)
 			if accountUUID != "" && fp.ClientID != "" {
+				originalBody := string(body)
 				if newBody, err := s.identityService.RewriteUserID(body, account.ID, accountUUID, fp.ClientID); err == nil && len(newBody) > 0 {
 					body = newBody
+					log.Printf("[DEBUG] Account %d user_id rewritten", account.ID)
+				} else {
+					log.Printf("[DEBUG] Account %d user_id NOT rewritten (no metadata.user_id in request or error)")
 				}
+				_ = originalBody // suppress unused warning
+			} else {
+				log.Printf("[DEBUG] Account %d skipping user_id rewrite: accountUUID=%v, ClientID=%v", account.ID, accountUUID != "", fp.ClientID != "")
 			}
 		}
 	}
+
+	// Debug: 打印请求体摘要
+	bodyPreview := string(body)
+	if len(bodyPreview) > 500 {
+		bodyPreview = bodyPreview[:500] + "..."
+	}
+	log.Printf("[DEBUG] Account %d request body preview: %s", account.ID, bodyPreview)
 
 	req, err := http.NewRequestWithContext(ctx, "POST", targetURL, bytes.NewReader(body))
 	if err != nil {
