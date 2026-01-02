@@ -98,7 +98,7 @@ func BestSimilarityByTemplates(text string) (bestScore float64, matchedTemplate 
 
 // IsRealClaudeCodeRequest 判断请求是否是真实的 Claude Code 请求
 // 通过检查 system 字段中是否包含 Claude Code 相关的系统提示词
-func IsRealClaudeCodeRequest(system interface{}, threshold float64) bool {
+func IsRealClaudeCodeRequest(system any, threshold float64) bool {
 	if threshold <= 0 {
 		threshold = DefaultSystemPromptThreshold
 	}
@@ -114,9 +114,9 @@ func IsRealClaudeCodeRequest(system interface{}, threshold float64) bool {
 	}
 
 	// 处理数组格式
-	if arr, ok := system.([]interface{}); ok {
+	if arr, ok := system.([]any); ok {
 		for _, item := range arr {
-			if itemMap, ok := item.(map[string]interface{}); ok {
+			if itemMap, ok := item.(map[string]any); ok {
 				if text, ok := itemMap["text"].(string); ok {
 					score, _ := BestSimilarityByTemplates(text)
 					if score >= threshold {
@@ -132,6 +132,6 @@ func IsRealClaudeCodeRequest(system interface{}, threshold float64) bool {
 
 // IncludesClaudeCodeSystemPrompt 检查 system 中是否存在 Claude Code 系统提示词
 // 与 IsRealClaudeCodeRequest 类似，但只需要找到一个匹配即返回 true
-func IncludesClaudeCodeSystemPrompt(system interface{}, threshold float64) bool {
+func IncludesClaudeCodeSystemPrompt(system any, threshold float64) bool {
 	return IsRealClaudeCodeRequest(system, threshold)
 }
