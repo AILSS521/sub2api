@@ -974,6 +974,10 @@ func (s *GatewayService) Forward(ctx context.Context, c *gin.Context, account *A
 		})
 	}
 
+	// Claude API 只允许 temperature 或 top_p 其中之一，优先使用 temperature
+	// 直接删除 top_p，与 claude-relay-service 处理方式一致
+	body = sjson.DeleteBytes(body, "top_p")
+
 	// 应用模型映射（仅对apikey类型账号）
 	originalModel := reqModel
 	if account.Type == AccountTypeApiKey {
@@ -1749,6 +1753,9 @@ func (s *GatewayService) ForwardCountTokens(ctx context.Context, c *gin.Context,
 
 	body := parsed.Body
 	reqModel := parsed.Model
+
+	// Claude API 只允许 temperature 或 top_p 其中之一，优先使用 temperature
+	body = sjson.DeleteBytes(body, "top_p")
 
 	// Antigravity 账户不支持 count_tokens 转发，返回估算值
 	// 参考 Antigravity-Manager 和 proxycast 实现
