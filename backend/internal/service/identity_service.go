@@ -154,7 +154,7 @@ func (s *IdentityService) ApplyFingerprint(req *http.Request, fp *Fingerprint) {
 
 	// Claude Code 客户端必需的额外头
 	req.Header.Set("X-Stainless-Retry-Count", "0")
-	req.Header.Set("X-Stainless-Timeout", "600000")
+	req.Header.Set("X-Stainless-Timeout", "60")
 	req.Header.Set("X-App", "cli")
 	req.Header.Set("Anthropic-Dangerous-Direct-Browser-Access", "true")
 }
