@@ -62,20 +62,45 @@ func NewIdentityService(cache IdentityCache) *IdentityService {
 }
 
 // GetOrCreateFingerprint 获取或创建账号的指纹
-// 如果缓存存在，检测user-agent版本，新版本则更新
-// 如果缓存不存在，生成随机ClientID并从请求头创建指纹，然后缓存
+// 始终使用 Claude Code 客户端特征，确保 OAuth token 正常工作
 func (s *IdentityService) GetOrCreateFingerprint(ctx context.Context, accountID int64, headers http.Header) (*Fingerprint, error) {
 	// 尝试从缓存获取指纹
 	cached, err := s.cache.GetFingerprint(ctx, accountID)
 	if err == nil && cached != nil {
-		// 检查客户端的user-agent是否是更新版本
-		clientUA := headers.Get("User-Agent")
-		if clientUA != "" && isNewerVersion(clientUA, cached.UserAgent) {
-			// 更新user-agent
-			cached.UserAgent = clientUA
-			// 保存更新后的指纹
+		// 强制覆盖为 Claude Code 客户端特征（不透传客户端 headers）
+		// 这确保即使缓存了旧的指纹，也会使用正确的 Claude Code User-Agent
+		needUpdate := false
+		if cached.UserAgent != defaultFingerprint.UserAgent {
+			cached.UserAgent = defaultFingerprint.UserAgent
+			needUpdate = true
+		}
+		if cached.StainlessLang != defaultFingerprint.StainlessLang {
+			cached.StainlessLang = defaultFingerprint.StainlessLang
+			needUpdate = true
+		}
+		if cached.StainlessPackageVersion != defaultFingerprint.StainlessPackageVersion {
+			cached.StainlessPackageVersion = defaultFingerprint.StainlessPackageVersion
+			needUpdate = true
+		}
+		if cached.StainlessOS != defaultFingerprint.StainlessOS {
+			cached.StainlessOS = defaultFingerprint.StainlessOS
+			needUpdate = true
+		}
+		if cached.StainlessArch != defaultFingerprint.StainlessArch {
+			cached.StainlessArch = defaultFingerprint.StainlessArch
+			needUpdate = true
+		}
+		if cached.StainlessRuntime != defaultFingerprint.StainlessRuntime {
+			cached.StainlessRuntime = defaultFingerprint.StainlessRuntime
+			needUpdate = true
+		}
+		if cached.StainlessRuntimeVersion != defaultFingerprint.StainlessRuntimeVersion {
+			cached.StainlessRuntimeVersion = defaultFingerprint.StainlessRuntimeVersion
+			needUpdate = true
+		}
+		if needUpdate {
 			_ = s.cache.SetFingerprint(ctx, accountID, cached)
-			log.Printf("Updated fingerprint user-agent for account %d: %s", accountID, clientUA)
+			log.Printf("Updated fingerprint to Claude Code defaults for account %d", accountID)
 		}
 		return cached, nil
 	}
@@ -96,23 +121,23 @@ func (s *IdentityService) GetOrCreateFingerprint(ctx context.Context, accountID 
 }
 
 // createFingerprintFromHeaders 从请求头创建指纹
+// 为了确保 OAuth token 正常工作，强制使用 Claude Code 客户端特征
+// 不再透传客户端（如 SillyTavern）的 User-Agent，避免 API 检测到不一致而拒绝请求
 func (s *IdentityService) createFingerprintFromHeaders(headers http.Header) *Fingerprint {
 	fp := &Fingerprint{}
 
-	// 获取User-Agent
-	if ua := headers.Get("User-Agent"); ua != "" {
-		fp.UserAgent = ua
-	} else {
-		fp.UserAgent = defaultFingerprint.UserAgent
-	}
+	// 强制使用 Claude Code User-Agent（不透传客户端 User-Agent）
+	// 这是 OAuth token 正常工作的关键：API 会验证请求是否来自 Claude Code 客户端
+	fp.UserAgent = defaultFingerprint.UserAgent
 
-	// 获取x-stainless-*头，如果没有则使用默认值
-	fp.StainlessLang = getHeaderOrDefault(headers, "X-Stainless-Lang", defaultFingerprint.StainlessLang)
-	fp.StainlessPackageVersion = getHeaderOrDefault(headers, "X-Stainless-Package-Version", defaultFingerprint.StainlessPackageVersion)
-	fp.StainlessOS = getHeaderOrDefault(headers, "X-Stainless-OS", defaultFingerprint.StainlessOS)
-	fp.StainlessArch = getHeaderOrDefault(headers, "X-Stainless-Arch", defaultFingerprint.StainlessArch)
-	fp.StainlessRuntime = getHeaderOrDefault(headers, "X-Stainless-Runtime", defaultFingerprint.StainlessRuntime)
-	fp.StainlessRuntimeVersion = getHeaderOrDefault(headers, "X-Stainless-Runtime-Version", defaultFingerprint.StainlessRuntimeVersion)
+	// 强制使用 Claude Code 客户端的 x-stainless-* 头
+	// 这些头用于标识 Claude Code CLI 客户端特征
+	fp.StainlessLang = defaultFingerprint.StainlessLang
+	fp.StainlessPackageVersion = defaultFingerprint.StainlessPackageVersion
+	fp.StainlessOS = defaultFingerprint.StainlessOS
+	fp.StainlessArch = defaultFingerprint.StainlessArch
+	fp.StainlessRuntime = defaultFingerprint.StainlessRuntime
+	fp.StainlessRuntimeVersion = defaultFingerprint.StainlessRuntimeVersion
 
 	return fp
 }
