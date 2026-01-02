@@ -48,15 +48,24 @@ func (s *ClaudeOAuthServiceSuite) TestGetOrganizationUUID() {
 			name: "success",
 			handler: func(w http.ResponseWriter, r *http.Request) {
 				w.Header().Set("Content-Type", "application/json")
-				_, _ = w.Write([]byte(`[{"uuid":"org-1"}]`))
+				_, _ = w.Write([]byte(`{"account":{"memberships":[{"organization":{"uuid":"org-1","capabilities":["chat"]}}]}}`))
 			},
 			wantUUID: "org-1",
 			validate: func(captured requestCapture) {
-				require.Equal(s.T(), "/api/organizations", captured.path, "unexpected path")
+				require.Equal(s.T(), "/api/bootstrap", captured.path, "unexpected path")
 				require.Len(s.T(), captured.cookies, 1, "expected 1 cookie")
 				require.Equal(s.T(), "sessionKey", captured.cookies[0].Name)
 				require.Equal(s.T(), "sess", captured.cookies[0].Value)
 			},
+		},
+		{
+			name: "no_chat_capability_returns_error",
+			handler: func(w http.ResponseWriter, r *http.Request) {
+				w.Header().Set("Content-Type", "application/json")
+				_, _ = w.Write([]byte(`{"account":{"memberships":[{"organization":{"uuid":"org-1","capabilities":["other"]}}]}}`))
+			},
+			wantErr:    true,
+			errContain: "no organization with chat capability",
 		},
 		{
 			name: "non_200_returns_error",
