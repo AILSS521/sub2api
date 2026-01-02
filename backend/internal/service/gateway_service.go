@@ -1187,6 +1187,9 @@ func (s *GatewayService) buildUpstreamRequest(ctx context.Context, c *gin.Contex
 		}
 	}
 
+	// Debug: 打印发送给上游的请求头
+	log.Printf("[DEBUG] Upstream request headers for account %d: %v", account.ID, req.Header)
+
 	return req, nil
 }
 
