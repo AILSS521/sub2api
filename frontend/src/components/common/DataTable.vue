@@ -91,7 +91,7 @@
         <tr
           v-else
           v-for="(row, index) in sortedData"
-          :key="index"
+          :key="row.id ?? index"
           class="hover:bg-gray-50 dark:hover:bg-dark-800"
         >
           <td

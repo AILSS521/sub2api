@@ -266,7 +266,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref, computed, onMounted } from 'vue'
+import { ref, computed, onMounted, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { adminAPI } from '@/api/admin'
 import type { Account, AccountUsageInfo, GeminiCredentials } from '@/types'
@@ -712,4 +712,17 @@ const loadUsage = async () => {
 onMounted(() => {
   loadUsage()
 })
+
+// 监听 account.id 变化，重新加载用量数据
+// 修复：当 DataTable 复用组件时，确保数据正确更新
+watch(
+  () => props.account.id,
+  (newId, oldId) => {
+    if (newId !== oldId) {
+      usageInfo.value = null
+      error.value = null
+      loadUsage()
+    }
+  }
+)
 </script>
