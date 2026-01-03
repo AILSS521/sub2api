@@ -246,9 +246,10 @@ func (s *claudeOAuthService) RefreshToken(ctx context.Context, refreshToken, pro
 
 func createReqClient(proxyURL string) *req.Client {
 	return getSharedReqClient(reqClientOptions{
-		ProxyURL:    proxyURL,
-		Timeout:     60 * time.Second,
-		Impersonate: true,
+		ProxyURL:       proxyURL,
+		Timeout:        60 * time.Second,
+		Impersonate:    true,
+		DisableCookies: true, // OAuth 流程需要手动管理 Cookie，禁用 Cookie Jar 防止不同账号的 Cookie 串联
 	})
 }
 

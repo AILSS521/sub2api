@@ -11,9 +11,10 @@ import (
 
 // reqClientOptions 定义 req 客户端的构建参数
 type reqClientOptions struct {
-	ProxyURL    string        // 代理 URL（支持 http/https/socks5）
-	Timeout     time.Duration // 请求超时时间
-	Impersonate bool          // 是否模拟 Chrome 浏览器指纹
+	ProxyURL       string        // 代理 URL（支持 http/https/socks5）
+	Timeout        time.Duration // 请求超时时间
+	Impersonate    bool          // 是否模拟 Chrome 浏览器指纹
+	DisableCookies bool          // 禁用 Cookie Jar（用于需要手动管理 Cookie 的场景）
 }
 
 // sharedReqClients 存储按配置参数缓存的 req 客户端实例
@@ -47,6 +48,11 @@ func getSharedReqClient(opts reqClientOptions) *req.Client {
 	if strings.TrimSpace(opts.ProxyURL) != "" {
 		client.SetProxyURL(strings.TrimSpace(opts.ProxyURL))
 	}
+	// 禁用 Cookie Jar：用于 OAuth 等需要手动管理 Cookie 的场景
+	// 避免共享客户端的 Cookie Jar 导致多个账号的 Cookie 串联
+	if opts.DisableCookies {
+		client.SetCookieJar(nil)
+	}
 
 	actual, _ := sharedReqClients.LoadOrStore(key, client)
 	if c, ok := actual.(*req.Client); ok {
@@ -56,9 +62,10 @@ func getSharedReqClient(opts reqClientOptions) *req.Client {
 }
 
 func buildReqClientKey(opts reqClientOptions) string {
-	return fmt.Sprintf("%s|%s|%t",
+	return fmt.Sprintf("%s|%s|%t|%t",
 		strings.TrimSpace(opts.ProxyURL),
 		opts.Timeout.String(),
 		opts.Impersonate,
+		opts.DisableCookies,
 	)
 }
