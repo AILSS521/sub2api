@@ -322,7 +322,8 @@ func (s *GatewayService) ensureClaudeCodeSystemPrompt(body []byte, parsed *Parse
 	// 如果是真实的 Claude Code 请求，不需要注入
 	if isRealClaudeCode {
 		log.Printf("Detected real Claude Code request, skipping system prompt injection")
-		return body
+		// 仍然需要检查 cache_control 限制
+		return limitCacheControlBlocks(body)
 	}
 
 	claudeCodePrompt := map[string]any{
@@ -386,6 +387,156 @@ func (s *GatewayService) ensureClaudeCodeSystemPrompt(body []byte, parsed *Parse
 			req["system"] = []any{claudeCodePrompt}
 		}
 	}
+
+	newBody, err := json.Marshal(req)
+	if err != nil {
+		return body
+	}
+
+	// 限制 cache_control 块数量，避免超过 Claude API 的 4 个限制
+	newBody = limitCacheControlBlocks(newBody)
+
+	return newBody
+}
+
+// limitCacheControlBlocks 限制 cache_control 块数量
+// Claude API 最多允许 4 个带 cache_control 的块
+// 参考 claude-relay-service 的实现：优先从 messages 移除，再从 system 移除
+func limitCacheControlBlocks(body []byte) []byte {
+	const maxCacheControlBlocks = 4
+
+	var req map[string]any
+	if err := json.Unmarshal(body, &req); err != nil {
+		return body
+	}
+
+	// 统计 cache_control 块数量
+	countCacheControlBlocks := func() int {
+		total := 0
+
+		// 统计 messages 中的 cache_control
+		if messages, ok := req["messages"].([]any); ok {
+			for _, msg := range messages {
+				if msgMap, ok := msg.(map[string]any); ok {
+					if content, ok := msgMap["content"].([]any); ok {
+						for _, item := range content {
+							if itemMap, ok := item.(map[string]any); ok {
+								if _, hasCacheControl := itemMap["cache_control"]; hasCacheControl {
+									total++
+								}
+							}
+						}
+					}
+				}
+			}
+		}
+
+		// 统计 system 中的 cache_control
+		if system, ok := req["system"].([]any); ok {
+			for _, item := range system {
+				if itemMap, ok := item.(map[string]any); ok {
+					if _, hasCacheControl := itemMap["cache_control"]; hasCacheControl {
+						total++
+					}
+				}
+			}
+		}
+
+		return total
+	}
+
+	// 从 messages 中移除一个 cache_control（只删除属性，保留内容）
+	removeCacheControlFromMessages := func() bool {
+		messages, ok := req["messages"].([]any)
+		if !ok {
+			return false
+		}
+
+		for _, msg := range messages {
+			msgMap, ok := msg.(map[string]any)
+			if !ok {
+				continue
+			}
+			content, ok := msgMap["content"].([]any)
+			if !ok {
+				continue
+			}
+			for _, item := range content {
+				if itemMap, ok := item.(map[string]any); ok {
+					if _, hasCacheControl := itemMap["cache_control"]; hasCacheControl {
+						delete(itemMap, "cache_control")
+						return true
+					}
+				}
+			}
+		}
+		return false
+	}
+
+	// 从 system 中移除一个 cache_control（只删除属性，保留内容）
+	removeCacheControlFromSystem := func() bool {
+		system, ok := req["system"].([]any)
+		if !ok {
+			return false
+		}
+
+		for _, item := range system {
+			if itemMap, ok := item.(map[string]any); ok {
+				if _, hasCacheControl := itemMap["cache_control"]; hasCacheControl {
+					delete(itemMap, "cache_control")
+					return true
+				}
+			}
+		}
+		return false
+	}
+
+	// 从 system 第一位移除 cache_control（我们注入的 Claude Code 提示词）
+	removeInjectedCacheControl := func() bool {
+		system, ok := req["system"].([]any)
+		if !ok || len(system) == 0 {
+			return false
+		}
+
+		// 检查第一位是否是我们注入的 Claude Code 提示词
+		if first, ok := system[0].(map[string]any); ok {
+			if _, hasCacheControl := first["cache_control"]; hasCacheControl {
+				if text, ok := first["text"].(string); ok && text == claude.ClaudeCodeSystemPrompt {
+					delete(first, "cache_control")
+					return true
+				}
+			}
+		}
+		return false
+	}
+
+	// 循环移除直到不超过限制
+	originalTotal := countCacheControlBlocks()
+	if originalTotal <= maxCacheControlBlocks {
+		return body // 不需要修改
+	}
+
+	total := originalTotal
+	for total > maxCacheControlBlocks {
+		// 优先移除我们注入的 cache_control
+		if removeInjectedCacheControl() {
+			total--
+			continue
+		}
+		// 再从 messages 中移除
+		if removeCacheControlFromMessages() {
+			total--
+			continue
+		}
+		// 最后从 system 其他位置移除
+		if removeCacheControlFromSystem() {
+			total--
+			continue
+		}
+		break
+	}
+
+	log.Printf("Limited cache_control blocks from %d to %d", originalTotal, total)
 
 	newBody, err := json.Marshal(req)
 	if err != nil {
