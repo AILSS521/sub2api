@@ -74,7 +74,6 @@ func (t *testTransport) RoundTrip(req *http.Request) (*http.Response, error) {
 	return http.DefaultTransport.RoundTrip(newReq)
 }
 
-
 func (s *GitHubReleaseServiceSuite) SetupTest() {
 	s.tempDir = s.T().TempDir()
 	s.proxyRepo = &mockProxyRepository{}
