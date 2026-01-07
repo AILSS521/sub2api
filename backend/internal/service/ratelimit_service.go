@@ -57,6 +57,14 @@ func (s *RateLimitService) HandleUpstreamError(ctx context.Context, account *Acc
 	tempMatched := s.tryTempUnschedulable(ctx, account, statusCode, responseBody)
 
 	switch statusCode {
+	case 400:
+		// 检查是否为致命错误（如组织/账号被禁用）
+		if fatalMsg := s.checkFatal400Error(responseBody); fatalMsg != "" {
+			s.handleAuthError(ctx, account, fatalMsg)
+			shouldDisable = true
+		} else {
+			shouldDisable = false
+		}
 	case 401:
 		// 认证失败：停止调度，记录错误
 		s.handleAuthError(ctx, account, "Authentication failed (401): invalid or expired credentials")
@@ -254,6 +262,46 @@ func (s *RateLimitService) handleAuthError(ctx context.Context, account *Account
 		return
 	}
 	log.Printf("Account %d disabled due to auth error: %s", account.ID, errorMsg)
+}
+
+// fatal400ErrorPatterns 定义需要禁用账号的 400 错误消息模式
+// 这些错误表示账号/组织级别的问题，需要立即停止调度
+var fatal400ErrorPatterns = []struct {
+	pattern string
+	message string
+}{
+	{"organization has been disabled", "Organization disabled (400): this organization has been disabled"},
+	{"organization is disabled", "Organization disabled (400): this organization is disabled"},
+	{"account has been disabled", "Account disabled (400): this account has been disabled"},
+	{"account is disabled", "Account disabled (400): this account is disabled"},
+	{"api key has been disabled", "API key disabled (400): this API key has been disabled"},
+	{"api key is disabled", "API key disabled (400): this API key is disabled"},
+	{"workspace has been disabled", "Workspace disabled (400): this workspace has been disabled"},
+	{"workspace is disabled", "Workspace disabled (400): this workspace is disabled"},
+}
+
+// checkFatal400Error 检查 400 错误响应是否为致命错误（需要禁用账号）
+// 返回错误消息（如果是致命错误）或空字符串（如果不是）
+func (s *RateLimitService) checkFatal400Error(responseBody []byte) string {
+	if len(responseBody) == 0 {
+		return ""
+	}
+
+	// 限制检查的字节数，避免处理过大的响应
+	body := responseBody
+	if len(body) > 4096 {
+		body = body[:4096]
+	}
+
+	bodyLower := strings.ToLower(string(body))
+
+	for _, pattern := range fatal400ErrorPatterns {
+		if strings.Contains(bodyLower, pattern.pattern) {
+			return pattern.message
+		}
+	}
+
+	return ""
 }
 
 // handle429 处理429限流错误
