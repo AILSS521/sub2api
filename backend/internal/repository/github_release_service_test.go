@@ -287,7 +287,6 @@ func (s *GitHubReleaseServiceSuite) TestFetchLatestRelease_Success() {
 		testClient: &http.Client{
 			Transport: &testTransport{testServerURL: s.srv.URL},
 		},
-		allowPrivateHosts: true,
 	}
 
 	release, err := s.client.FetchLatestRelease(context.Background(), "test/repo")
@@ -308,7 +307,6 @@ func (s *GitHubReleaseServiceSuite) TestFetchLatestRelease_Non200() {
 		testClient: &http.Client{
 			Transport: &testTransport{testServerURL: s.srv.URL},
 		},
-		allowPrivateHosts: true,
 	}
 
 	_, err := s.client.FetchLatestRelease(context.Background(), "test/repo")
@@ -327,7 +325,6 @@ func (s *GitHubReleaseServiceSuite) TestFetchLatestRelease_InvalidJSON() {
 		testClient: &http.Client{
 			Transport: &testTransport{testServerURL: s.srv.URL},
 		},
-		allowPrivateHosts: true,
 	}
 
 	_, err := s.client.FetchLatestRelease(context.Background(), "test/repo")
@@ -344,7 +341,6 @@ func (s *GitHubReleaseServiceSuite) TestFetchLatestRelease_ContextCancel() {
 		testClient: &http.Client{
 			Transport: &testTransport{testServerURL: s.srv.URL},
 		},
-		allowPrivateHosts: true,
 	}
 
 	ctx, cancel := context.WithCancel(context.Background())
