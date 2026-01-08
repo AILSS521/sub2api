@@ -35,10 +35,10 @@
                   <svg class="h-2.5 w-2.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M3.75 6A2.25 2.25 0 016 3.75h2.25A2.25 2.25 0 0110.5 6v2.25a2.25 2.25 0 01-2.25 2.25H6a2.25 2.25 0 01-2.25-2.25V6zM3.75 15.75A2.25 2.25 0 016 13.5h2.25a2.25 2.25 0 012.25 2.25V18a2.25 2.25 0 01-2.25 2.25H6A2.25 2.25 0 013.75 18v-2.25zM13.5 6a2.25 2.25 0 012.25-2.25H18A2.25 2.25 0 0120.25 6v2.25A2.25 2.25 0 0118 10.5h-2.25a2.25 2.25 0 01-2.25-2.25V6zM13.5 15.75a2.25 2.25 0 012.25-2.25H18a2.25 2.25 0 012.25 2.25V18A2.25 2.25 0 0118 20.25h-2.25A2.25 2.25 0 0113.5 18v-2.25z" /></svg>
                   <span class="font-mono">{{ row.current_concurrency || 0 }}/{{ row.concurrency }}</span>
                 </span>
-                <!-- 分组标签 -->
-                <template v-if="row.groups && row.groups.length > 0 && !authStore.isSimpleMode">
-                  <GroupBadge v-for="group in row.groups" :key="group.id" :name="group.name" :platform="group.platform" :subscription-type="group.subscription_type" :rate-multiplier="group.rate_multiplier" :show-rate="false" class="!text-[10px] !py-0.5" />
-                </template>
+              </div>
+              <!-- 分组标签（独立一行） -->
+              <div v-if="row.groups && row.groups.length > 0 && !authStore.isSimpleMode" class="mt-1 flex flex-wrap items-center gap-1">
+                <GroupBadge v-for="group in row.groups" :key="group.id" :name="group.name" :platform="group.platform" :subscription-type="group.subscription_type" :rate-multiplier="group.rate_multiplier" :show-rate="false" class="!text-[10px] !py-0.5" />
               </div>
             </div>
           </template>
