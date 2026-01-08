@@ -49,7 +49,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref, onMounted } from 'vue'
+import { ref, onMounted, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { adminAPI } from '@/api/admin'
 import type { Account, WindowStats } from '@/types'
@@ -92,4 +92,9 @@ const loadStats = async () => {
 onMounted(() => {
   loadStats()
 })
+
+// 监听账号数据变化，重新加载统计（用于静默刷新场景）
+watch(() => props.account, () => {
+  loadStats()
+}, { deep: true })
 </script>

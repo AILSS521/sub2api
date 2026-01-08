@@ -278,7 +278,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref, computed, onMounted } from 'vue'
+import { ref, computed, onMounted, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { adminAPI } from '@/api/admin'
 import type { Account, AccountUsageInfo, GeminiCredentials, WindowStats } from '@/types'
@@ -842,4 +842,9 @@ const loadUsage = async () => {
 onMounted(() => {
   loadUsage()
 })
+
+// 监听账号数据变化，重新加载使用量（用于静默刷新场景）
+watch(() => props.account, () => {
+  loadUsage()
+}, { deep: true })
 </script>
