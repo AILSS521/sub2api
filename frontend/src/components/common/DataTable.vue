@@ -270,17 +270,20 @@ watch(
       }
     } else if (!newLoading && oldLoading) {
       // loading: true → false，加载完成，恢复滚动位置
+      // 使用 setTimeout 确保 DOM 完全渲染后再恢复
       nextTick(() => {
-        const scrollContainer = getScrollContainer()
-        if (scrollContainer) {
-          console.log('[DataTable] 恢复滚动位置:', {
-            left: savedScrollLeft.value,
-            top: savedScrollTop.value,
-            container: scrollContainer.className
-          })
-          scrollContainer.scrollLeft = savedScrollLeft.value
-          scrollContainer.scrollTop = savedScrollTop.value
-        }
+        setTimeout(() => {
+          const scrollContainer = getScrollContainer()
+          if (scrollContainer) {
+            console.log('[DataTable] 恢复滚动位置:', {
+              left: savedScrollLeft.value,
+              top: savedScrollTop.value,
+              container: scrollContainer.className
+            })
+            scrollContainer.scrollLeft = savedScrollLeft.value
+            scrollContainer.scrollTop = savedScrollTop.value
+          }
+        }, 50)
       })
     }
   },
