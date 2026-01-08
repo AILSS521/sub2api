@@ -225,9 +225,10 @@ const actionsExpanded = ref(false)
 
 // 保存滚动位置（用于数据刷新后恢复用户浏览位置）
 const savedScrollLeft = ref(0)
+const savedScrollTop = ref(0)
 
 // 监听 loading 状态变化来保存和恢复滚动位置
-// 关键：在 loading 变为 true 的那一刻保存位置（此时表格内容还未被替换为 skeleton）
+// 关键：在 loading 变为 true 的那一刻保存位置（此时数据还在）
 watch(
   () => props.loading,
   (newLoading, oldLoading) => {
@@ -235,12 +236,18 @@ watch(
       // loading: false → true，开始加载，保存当前滚动位置
       if (tableWrapperRef.value) {
         savedScrollLeft.value = tableWrapperRef.value.scrollLeft
+        savedScrollTop.value = tableWrapperRef.value.scrollTop
       }
     } else if (!newLoading && oldLoading) {
       // loading: true → false，加载完成，恢复滚动位置
       nextTick(() => {
-        if (tableWrapperRef.value && savedScrollLeft.value > 0) {
-          tableWrapperRef.value.scrollLeft = savedScrollLeft.value
+        if (tableWrapperRef.value) {
+          if (savedScrollLeft.value > 0) {
+            tableWrapperRef.value.scrollLeft = savedScrollLeft.value
+          }
+          if (savedScrollTop.value > 0) {
+            tableWrapperRef.value.scrollTop = savedScrollTop.value
+          }
         }
       })
     }
