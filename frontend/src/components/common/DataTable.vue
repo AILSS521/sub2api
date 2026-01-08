@@ -106,7 +106,7 @@
 </template>
 
 <script setup lang="ts">
-import { computed, ref, onMounted, onUnmounted, watch, nextTick } from 'vue'
+import { computed, ref, onMounted, onUnmounted, onBeforeUpdate, onUpdated, watch, nextTick } from 'vue'
 import { useI18n } from 'vue-i18n'
 import type { Column } from './types'
 import Icon from '@/components/icons/Icon.vue'
@@ -222,6 +222,23 @@ const props = withDefaults(defineProps<Props>(), {
 const sortKey = ref<string>('')
 const sortOrder = ref<'asc' | 'desc'>('asc')
 const actionsExpanded = ref(false)
+
+// 保存滚动位置（用于数据刷新后恢复用户浏览位置）
+const savedScrollLeft = ref(0)
+
+// 在组件更新前保存滚动位置
+onBeforeUpdate(() => {
+  if (tableWrapperRef.value) {
+    savedScrollLeft.value = tableWrapperRef.value.scrollLeft
+  }
+})
+
+// 在组件更新后恢复滚动位置
+onUpdated(() => {
+  if (tableWrapperRef.value) {
+    tableWrapperRef.value.scrollLeft = savedScrollLeft.value
+  }
+})
 
 // 数据/列变化时重新检查滚动状态
 // 注意：不能监听 actionsExpanded，因为 checkActionsColumnWidth 会临时修改它，会导致无限循环
