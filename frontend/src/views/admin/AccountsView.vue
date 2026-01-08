@@ -24,25 +24,27 @@
           <template #cell-select="{ row }">
             <input type="checkbox" :checked="selIds.includes(row.id)" @change="toggleSel(row.id)" class="rounded border-gray-300 text-primary-600 focus:ring-primary-500" />
           </template>
-          <template #cell-name="{ value }">
-            <span class="font-medium text-gray-900 dark:text-white">{{ value }}</span>
+          <template #cell-name="{ row, value }">
+            <div class="min-w-0">
+              <span class="font-medium text-gray-900 dark:text-white">{{ value }}</span>
+              <div class="mt-1 flex flex-wrap items-center gap-1">
+                <!-- 平台/类型标签 -->
+                <PlatformTypeBadge :platform="row.platform" :type="row.type" class="!text-[10px] !py-0.5" />
+                <!-- 并发标签 -->
+                <span :class="['inline-flex items-center gap-0.5 rounded-md px-1.5 py-0.5 text-[10px] font-medium', (row.current_concurrency || 0) >= row.concurrency ? 'bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-400' : (row.current_concurrency || 0) > 0 ? 'bg-yellow-100 text-yellow-700 dark:bg-yellow-900/30 dark:text-yellow-400' : 'bg-gray-100 text-gray-600 dark:bg-gray-800 dark:text-gray-400']">
+                  <svg class="h-2.5 w-2.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M3.75 6A2.25 2.25 0 016 3.75h2.25A2.25 2.25 0 0110.5 6v2.25a2.25 2.25 0 01-2.25 2.25H6a2.25 2.25 0 01-2.25-2.25V6zM3.75 15.75A2.25 2.25 0 016 13.5h2.25a2.25 2.25 0 012.25 2.25V18a2.25 2.25 0 01-2.25 2.25H6A2.25 2.25 0 013.75 18v-2.25zM13.5 6a2.25 2.25 0 012.25-2.25H18A2.25 2.25 0 0120.25 6v2.25A2.25 2.25 0 0118 10.5h-2.25a2.25 2.25 0 01-2.25-2.25V6zM13.5 15.75a2.25 2.25 0 012.25-2.25H18a2.25 2.25 0 012.25 2.25V18A2.25 2.25 0 0118 20.25h-2.25A2.25 2.25 0 0113.5 18v-2.25z" /></svg>
+                  <span class="font-mono">{{ row.current_concurrency || 0 }}/{{ row.concurrency }}</span>
+                </span>
+                <!-- 分组标签 -->
+                <template v-if="row.groups && row.groups.length > 0 && !authStore.isSimpleMode">
+                  <GroupBadge v-for="group in row.groups" :key="group.id" :name="group.name" :platform="group.platform" :subscription-type="group.subscription_type" :rate-multiplier="group.rate_multiplier" :show-rate="false" class="!text-[10px] !py-0.5" />
+                </template>
+              </div>
+            </div>
           </template>
           <template #cell-notes="{ value }">
             <span v-if="value" :title="value" class="block max-w-xs truncate text-sm text-gray-600 dark:text-gray-300">{{ value }}</span>
             <span v-else class="text-sm text-gray-400 dark:text-dark-500">-</span>
-          </template>
-          <template #cell-platform_type="{ row }">
-            <PlatformTypeBadge :platform="row.platform" :type="row.type" />
-          </template>
-          <template #cell-concurrency="{ row }">
-            <div class="flex items-center gap-1.5">
-              <span :class="['inline-flex items-center gap-1 rounded-md px-2 py-0.5 text-xs font-medium', (row.current_concurrency || 0) >= row.concurrency ? 'bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-400' : (row.current_concurrency || 0) > 0 ? 'bg-yellow-100 text-yellow-700 dark:bg-yellow-900/30 dark:text-yellow-400' : 'bg-gray-100 text-gray-600 dark:bg-gray-800 dark:text-gray-400']">
-                <svg class="h-3 w-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M3.75 6A2.25 2.25 0 016 3.75h2.25A2.25 2.25 0 0110.5 6v2.25a2.25 2.25 0 01-2.25 2.25H6a2.25 2.25 0 01-2.25-2.25V6zM3.75 15.75A2.25 2.25 0 016 13.5h2.25a2.25 2.25 0 012.25 2.25V18a2.25 2.25 0 01-2.25 2.25H6A2.25 2.25 0 013.75 18v-2.25zM13.5 6a2.25 2.25 0 012.25-2.25H18A2.25 2.25 0 0120.25 6v2.25A2.25 2.25 0 0118 10.5h-2.25a2.25 2.25 0 01-2.25-2.25V6zM13.5 15.75a2.25 2.25 0 012.25-2.25H18a2.25 2.25 0 012.25 2.25V18A2.25 2.25 0 0118 20.25h-2.25A2.25 2.25 0 0113.5 18v-2.25z" /></svg>
-                <span class="font-mono">{{ row.current_concurrency || 0 }}</span>
-                <span class="text-gray-400 dark:text-gray-500">/</span>
-                <span class="font-mono">{{ row.concurrency }}</span>
-              </span>
-            </div>
           </template>
           <template #cell-status="{ row }">
             <AccountStatusIndicator :account="row" @show-temp-unsched="handleShowTempUnsched" />
@@ -54,12 +56,6 @@
           </template>
           <template #cell-today_stats="{ row }">
             <AccountTodayStatsCell :account="row" />
-          </template>
-          <template #cell-groups="{ row }">
-            <div v-if="row.groups && row.groups.length > 0" class="flex flex-wrap gap-1.5">
-              <GroupBadge v-for="group in row.groups" :key="group.id" :name="group.name" :platform="group.platform" :subscription-type="group.subscription_type" :rate-multiplier="group.rate_multiplier" :show-rate="false" />
-            </div>
-            <span v-else class="text-sm text-gray-400 dark:text-dark-500">-</span>
           </template>
           <template #cell-usage="{ row }">
             <AccountUsageCell :account="row" />
@@ -165,15 +161,10 @@ const cols = computed(() => {
   const c = [
     { key: 'select', label: '', sortable: false },
     { key: 'name', label: t('admin.accounts.columns.name'), sortable: true },
-    { key: 'platform_type', label: t('admin.accounts.columns.platformType'), sortable: false },
-    { key: 'concurrency', label: t('admin.accounts.columns.concurrencyStatus'), sortable: false },
     { key: 'status', label: t('admin.accounts.columns.status'), sortable: true },
     { key: 'schedulable', label: t('admin.accounts.columns.schedulable'), sortable: true },
     { key: 'today_stats', label: t('admin.accounts.columns.todayStats'), sortable: false }
   ]
-  if (!authStore.isSimpleMode) {
-    c.push({ key: 'groups', label: t('admin.accounts.columns.groups'), sortable: false })
-  }
   c.push(
     { key: 'usage', label: t('admin.accounts.columns.usageWindows'), sortable: false },
     { key: 'priority', label: t('admin.accounts.columns.priority'), sortable: true },
