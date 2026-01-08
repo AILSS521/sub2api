@@ -227,6 +227,30 @@ const actionsExpanded = ref(false)
 const savedScrollLeft = ref(0)
 const savedScrollTop = ref(0)
 
+// 获取真正的滚动容器（可能是 table-wrapper 或其父级元素）
+const getScrollContainer = (): HTMLElement | null => {
+  if (!tableWrapperRef.value) return null
+
+  // 首先检查 table-wrapper 自身
+  if (tableWrapperRef.value.scrollHeight > tableWrapperRef.value.clientHeight) {
+    return tableWrapperRef.value
+  }
+
+  // 向上查找真正的滚动容器
+  let parent = tableWrapperRef.value.parentElement
+  while (parent) {
+    const style = getComputedStyle(parent)
+    const overflowY = style.overflowY
+    if ((overflowY === 'auto' || overflowY === 'scroll') &&
+        parent.scrollHeight > parent.clientHeight) {
+      return parent
+    }
+    parent = parent.parentElement
+  }
+
+  return tableWrapperRef.value
+}
+
 // 监听 loading 状态变化来保存和恢复滚动位置
 // 使用 flush: 'sync' 确保在状态变化后立即执行，在 Vue 重新渲染之前保存位置
 watch(
@@ -234,18 +258,28 @@ watch(
   (newLoading, oldLoading) => {
     if (newLoading && !oldLoading) {
       // loading: false → true，开始加载，保存当前滚动位置
-      if (tableWrapperRef.value) {
-        savedScrollLeft.value = tableWrapperRef.value.scrollLeft
-        savedScrollTop.value = tableWrapperRef.value.scrollTop
-        console.log('[DataTable] 保存滚动位置:', { left: savedScrollLeft.value, top: savedScrollTop.value })
+      const scrollContainer = getScrollContainer()
+      if (scrollContainer) {
+        savedScrollLeft.value = scrollContainer.scrollLeft
+        savedScrollTop.value = scrollContainer.scrollTop
+        console.log('[DataTable] 保存滚动位置:', {
+          left: savedScrollLeft.value,
+          top: savedScrollTop.value,
+          container: scrollContainer.className
+        })
       }
     } else if (!newLoading && oldLoading) {
       // loading: true → false，加载完成，恢复滚动位置
       nextTick(() => {
-        if (tableWrapperRef.value) {
-          console.log('[DataTable] 恢复滚动位置:', { left: savedScrollLeft.value, top: savedScrollTop.value })
-          tableWrapperRef.value.scrollLeft = savedScrollLeft.value
-          tableWrapperRef.value.scrollTop = savedScrollTop.value
+        const scrollContainer = getScrollContainer()
+        if (scrollContainer) {
+          console.log('[DataTable] 恢复滚动位置:', {
+            left: savedScrollLeft.value,
+            top: savedScrollTop.value,
+            container: scrollContainer.className
+          })
+          scrollContainer.scrollLeft = savedScrollLeft.value
+          scrollContainer.scrollTop = savedScrollTop.value
         }
       })
     }
