@@ -11,8 +11,8 @@
             @update:searchQuery="debouncedReload"
           />
           <AccountTableActions
-            :loading="loading"
-            @refresh="load"
+            :loading="refreshing"
+            @refresh="silentLoad"
             @sync="showSync = true"
             @create="showCreate = true"
           />
@@ -156,7 +156,7 @@ const statsAcc = ref<Account | null>(null)
 const togglingSchedulable = ref<number | null>(null)
 const menu = reactive<{show:boolean, acc:Account|null, pos:{top:number, left:number}|null}>({ show: false, acc: null, pos: null })
 
-const { items: accounts, loading, params, pagination, load, reload, debouncedReload, handlePageChange } = useTableLoader<Account, any>({
+const { items: accounts, loading, refreshing, params, pagination, load, silentLoad, reload, debouncedReload, handlePageChange } = useTableLoader<Account, any>({
   fetchFn: adminAPI.accounts.list,
   initialParams: { platform: '', type: '', status: '', search: '' }
 })

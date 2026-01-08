@@ -39,12 +39,19 @@ export function useTableLoader<T, P extends Record<string, any>>(options: TableL
     return error?.name === 'AbortError' || error?.code === 'ERR_CANCELED' || error?.name === 'CanceledError'
   }
 
-  const load = async () => {
+  const refreshing = ref(false)
+
+  const load = async (silent = false) => {
     if (abortController) {
       abortController.abort()
     }
     abortController = new AbortController()
-    loading.value = true
+
+    if (silent) {
+      refreshing.value = true
+    } else {
+      loading.value = true
+    }
 
     try {
       const response = await fetchFn(
@@ -53,7 +60,7 @@ export function useTableLoader<T, P extends Record<string, any>>(options: TableL
         toRaw(params) as P,
         { signal: abortController.signal }
       )
-      
+
       items.value = response.items || []
       pagination.total = response.total || 0
       pagination.pages = response.pages || 0
@@ -63,11 +70,17 @@ export function useTableLoader<T, P extends Record<string, any>>(options: TableL
         throw error
       }
     } finally {
-      if (abortController && !abortController.signal.aborted) {
+      // 无论请求成功、失败还是被中止，都需要重置对应的状态
+      if (silent) {
+        refreshing.value = false
+      } else {
         loading.value = false
       }
     }
   }
+
+  // 静默刷新：只更新数据，不显示loading骨架屏，保持滚动位置
+  const silentLoad = () => load(true)
 
   const reload = () => {
     pagination.page = 1
@@ -94,9 +107,11 @@ export function useTableLoader<T, P extends Record<string, any>>(options: TableL
   return {
     items,
     loading,
+    refreshing,
     params,
     pagination,
     load,
+    silentLoad,
     reload,
     debouncedReload,
     handlePageChange,
