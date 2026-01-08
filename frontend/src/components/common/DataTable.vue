@@ -121,24 +121,35 @@ const actionsColumnNeedsExpanding = ref(false)
 // 保存滚动位置用于刷新后恢复
 let savedScrollLeft = 0
 
-// 监听 loading 状态变化，在显示骨架屏前保存滚动位置
+// 恢复滚动位置的辅助函数，使用 RAF 确保在渲染完成后执行
+const restoreScrollPosition = () => {
+  if (tableWrapperRef.value && savedScrollLeft > 0) {
+    // 使用双重 RAF 确保在浏览器完成渲染后执行
+    requestAnimationFrame(() => {
+      requestAnimationFrame(() => {
+        if (tableWrapperRef.value) {
+          tableWrapperRef.value.scrollLeft = savedScrollLeft
+        }
+      })
+    })
+  }
+}
+
+// 监听 loading 状态变化，使用 sync flush 确保在 DOM 更新前保存滚动位置
 watch(
   () => props.loading,
   (newLoading, oldLoading) => {
     if (newLoading && !oldLoading) {
-      // 开始加载时保存滚动位置
+      // 开始加载时立即保存滚动位置
       if (tableWrapperRef.value) {
         savedScrollLeft = tableWrapperRef.value.scrollLeft
       }
     } else if (!newLoading && oldLoading) {
       // 加载完成后恢复滚动位置
-      nextTick(() => {
-        if (tableWrapperRef.value && savedScrollLeft > 0) {
-          tableWrapperRef.value.scrollLeft = savedScrollLeft
-        }
-      })
+      nextTick(restoreScrollPosition)
     }
-  }
+  },
+  { flush: 'sync' }  // 同步执行，确保在 DOM 更新前保存
 )
 
 // 在 DOM 更新之前保存滚动位置（用于非 loading 相关的更新）
@@ -150,8 +161,8 @@ onBeforeUpdate(() => {
 
 // 在 DOM 更新之后恢复滚动位置
 onUpdated(() => {
-  if (tableWrapperRef.value && savedScrollLeft > 0 && !props.loading) {
-    tableWrapperRef.value.scrollLeft = savedScrollLeft
+  if (savedScrollLeft > 0 && !props.loading) {
+    restoreScrollPosition()
   }
 })
 
