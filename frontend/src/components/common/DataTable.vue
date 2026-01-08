@@ -82,8 +82,8 @@
         <!-- Data rows -->
         <tr
           v-else
-          v-for="(row, index) in sortedData"
-          :key="index"
+          v-for="row in sortedData"
+          :key="row.id ?? row"
           class="hover:bg-gray-50 dark:hover:bg-dark-800"
         >
           <td
@@ -106,7 +106,7 @@
 </template>
 
 <script setup lang="ts">
-import { computed, ref, onMounted, onUnmounted, watch, nextTick } from 'vue'
+import { computed, ref, onMounted, onUnmounted, onBeforeUpdate, onUpdated, watch, nextTick } from 'vue'
 import { useI18n } from 'vue-i18n'
 import type { Column } from './types'
 import Icon from '@/components/icons/Icon.vue'
@@ -117,6 +117,23 @@ const { t } = useI18n()
 const tableWrapperRef = ref<HTMLElement | null>(null)
 const isScrollable = ref(false)
 const actionsColumnNeedsExpanding = ref(false)
+
+// 保存滚动位置用于刷新后恢复
+let savedScrollLeft = 0
+
+// 在 DOM 更新之前保存滚动位置
+onBeforeUpdate(() => {
+  if (tableWrapperRef.value) {
+    savedScrollLeft = tableWrapperRef.value.scrollLeft
+  }
+})
+
+// 在 DOM 更新之后恢复滚动位置
+onUpdated(() => {
+  if (tableWrapperRef.value && savedScrollLeft > 0) {
+    tableWrapperRef.value.scrollLeft = savedScrollLeft
+  }
+})
 
 // 检查是否可滚动
 const checkScrollable = () => {
@@ -225,8 +242,9 @@ const actionsExpanded = ref(false)
 
 // 数据/列变化时重新检查滚动状态
 // 注意：不能监听 actionsExpanded，因为 checkActionsColumnWidth 会临时修改它，会导致无限循环
+// 滚动位置保持由 onBeforeUpdate/onUpdated 处理
 watch(
-  [() => props.data.length, () => props.columns],
+  [() => props.data, () => props.columns],
   async () => {
     await nextTick()
     checkScrollable()
