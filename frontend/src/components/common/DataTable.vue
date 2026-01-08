@@ -228,7 +228,7 @@ const savedScrollLeft = ref(0)
 const savedScrollTop = ref(0)
 
 // 监听 loading 状态变化来保存和恢复滚动位置
-// 关键：在 loading 变为 true 的那一刻保存位置（此时数据还在）
+// 使用 flush: 'sync' 确保在状态变化后立即执行，在 Vue 重新渲染之前保存位置
 watch(
   () => props.loading,
   (newLoading, oldLoading) => {
@@ -237,21 +237,20 @@ watch(
       if (tableWrapperRef.value) {
         savedScrollLeft.value = tableWrapperRef.value.scrollLeft
         savedScrollTop.value = tableWrapperRef.value.scrollTop
+        console.log('[DataTable] 保存滚动位置:', { left: savedScrollLeft.value, top: savedScrollTop.value })
       }
     } else if (!newLoading && oldLoading) {
       // loading: true → false，加载完成，恢复滚动位置
       nextTick(() => {
         if (tableWrapperRef.value) {
-          if (savedScrollLeft.value > 0) {
-            tableWrapperRef.value.scrollLeft = savedScrollLeft.value
-          }
-          if (savedScrollTop.value > 0) {
-            tableWrapperRef.value.scrollTop = savedScrollTop.value
-          }
+          console.log('[DataTable] 恢复滚动位置:', { left: savedScrollLeft.value, top: savedScrollTop.value })
+          tableWrapperRef.value.scrollLeft = savedScrollLeft.value
+          tableWrapperRef.value.scrollTop = savedScrollTop.value
         }
       })
     }
-  }
+  },
+  { flush: 'sync' }
 )
 
 // 数据/列变化时重新检查滚动状态
@@ -351,6 +350,7 @@ const getAdaptivePaddingClass = () => {
   --select-col-width: 52px; /* 勾选列宽度：px-6 (24px*2) + checkbox (16px) */
   position: relative;
   overflow-x: auto;
+  overflow-y: auto; /* 明确启用垂直滚动 */
   isolation: isolate;
 }
 
