@@ -1,4 +1,4 @@
-import { ref, reactive, onUnmounted, toRaw } from 'vue'
+import { ref, reactive, onUnmounted, toRaw, triggerRef } from 'vue'
 import { useDebounceFn } from '@vueuse/core'
 import type { BasePaginationResponse, FetchOptions } from '@/types'
 
@@ -57,6 +57,7 @@ export function useTableLoader<T, P extends Record<string, any>>(options: TableL
       )
 
       items.value = response.items || []
+      triggerRef(items) // 强制触发响应式更新
       pagination.total = response.total || 0
       pagination.pages = response.pages || 0
     } catch (error) {
