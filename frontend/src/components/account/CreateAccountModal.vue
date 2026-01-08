@@ -2410,6 +2410,7 @@ const handleCookieAuth = async (sessionKey: string) => {
 
         await adminAPI.accounts.create({
           name: accountName,
+          notes: form.notes,
           platform: form.platform,
           type: addMethod.value, // Use addMethod as type: 'oauth' or 'setup-token'
           credentials,
