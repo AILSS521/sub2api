@@ -39,12 +39,14 @@ export function useTableLoader<T, P extends Record<string, any>>(options: TableL
     return error?.name === 'AbortError' || error?.code === 'ERR_CANCELED' || error?.name === 'CanceledError'
   }
 
-  const load = async () => {
+  const load = async (silent = false) => {
     if (abortController) {
       abortController.abort()
     }
     abortController = new AbortController()
-    loading.value = true
+    if (!silent) {
+      loading.value = true
+    }
 
     try {
       const response = await fetchFn(
@@ -53,7 +55,7 @@ export function useTableLoader<T, P extends Record<string, any>>(options: TableL
         toRaw(params) as P,
         { signal: abortController.signal }
       )
-      
+
       items.value = response.items || []
       pagination.total = response.total || 0
       pagination.pages = response.pages || 0
@@ -68,6 +70,9 @@ export function useTableLoader<T, P extends Record<string, any>>(options: TableL
       }
     }
   }
+
+  // 静默刷新：不显示 loading 状态，保持当前视图
+  const refresh = () => load(true)
 
   const reload = () => {
     pagination.page = 1
@@ -97,6 +102,7 @@ export function useTableLoader<T, P extends Record<string, any>>(options: TableL
     params,
     pagination,
     load,
+    refresh,
     reload,
     debouncedReload,
     handlePageChange,
