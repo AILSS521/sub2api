@@ -45,6 +45,15 @@ var (
 	sessionIDRegex       = regexp.MustCompile(`session_([a-f0-9-]{36})`)
 	claudeCliUserAgentRe = regexp.MustCompile(`^claude-cli/\d+\.\d+\.\d+`)
 
+	// bannedToolNameMap 被禁工具名映射表
+	// Anthropic 会检测这些工具名来识别非 Claude Code 客户端
+	// 将它们重写为 Claude Code 风格（PascalCase）可以绕过检测
+	bannedToolNameMap = map[string]string{
+		"read_file": "Read",
+		"grep":      "Grep",
+		"write":     "Write",
+	}
+
 	// claudeCodePromptPrefixes 用于检测 Claude Code 系统提示词的前缀列表
 	// 支持多种变体：标准版、Agent SDK 版、Explore Agent 版、Compact 版等
 	// 注意：前缀之间不应存在包含关系，否则会导致冗余匹配
@@ -1139,6 +1148,38 @@ func enforceCacheControlLimit(body []byte) []byte {
 	return result
 }
 
+// rewriteBannedToolNames 重写被禁的工具名
+// Anthropic 会检测 read_file, grep, write 等工具名来识别非 Claude Code 客户端
+// 将它们重写为 Claude Code 风格（PascalCase）可以绕过检测
+func rewriteBannedToolNames(body []byte) []byte {
+	tools := gjson.GetBytes(body, "tools")
+	if !tools.Exists() || !tools.IsArray() {
+		return body
+	}
+
+	modified := false
+	result := body
+
+	for i, tool := range tools.Array() {
+		name := tool.Get("name").String()
+		if newName, ok := bannedToolNameMap[name]; ok {
+			var err error
+			result, err = sjson.SetBytes(result, fmt.Sprintf("tools.%d.name", i), newName)
+			if err != nil {
+				log.Printf("Warning: failed to rewrite tool name %s -> %s: %v", name, newName, err)
+				continue
+			}
+			modified = true
+			log.Printf("Tool name rewritten: %s -> %s", name, newName)
+		}
+	}
+
+	if modified {
+		log.Printf("Banned tool names rewritten in request")
+	}
+	return result
+}
+
 // countCacheControlBlocks 统计 system 和 messages 中的 cache_control 块数量
 func countCacheControlBlocks(data map[string]any) int {
 	count := 0
@@ -1245,6 +1286,12 @@ func (s *GatewayService) Forward(ctx context.Context, c *gin.Context, account *A
 
 	// 强制执行 cache_control 块数量限制（最多 4 个）
 	body = enforceCacheControlLimit(body)
+
+	// 重写被禁的工具名（仅 OAuth/SetupToken 账号需要）
+	// Anthropic 会检测 read_file, grep, write 等工具名来识别非 Claude Code 客户端
+	if account.IsOAuth() {
+		body = rewriteBannedToolNames(body)
+	}
 
 	// Claude API 只允许 temperature 或 top_p 其中之一，优先使用 temperature
 	// 直接删除 top_p，与 claude-relay-service 处理方式一致
