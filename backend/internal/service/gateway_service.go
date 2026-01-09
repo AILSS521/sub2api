@@ -962,6 +962,10 @@ const (
 	retryBaseDelay = 300 * time.Millisecond
 	retryMaxDelay  = 3 * time.Second
 
+	// OAuth 账号 403 错误专用重试延迟
+	// Claude API 的 403 可能是临时性安全检查，需要较长等待时间
+	retryOAuth403Delay = 2 * time.Second
+
 	// 最大重试耗时（包含请求本身耗时 + 退避等待时间）。
 	// 用于防止极端情况下 goroutine 长时间堆积导致资源耗尽。
 	maxRetryElapsed = 10 * time.Second
@@ -1386,7 +1390,14 @@ func (s *GatewayService) Forward(ctx context.Context, c *gin.Context, account *A
 					break
 				}
 
-				delay := retryBackoffDelay(attempt)
+				// OAuth 账号 403 错误使用固定 2 秒延迟，其他情况使用指数退避
+				var delay time.Duration
+				if account.IsOAuth() && resp.StatusCode == 403 {
+					delay = retryOAuth403Delay
+					log.Printf("Account %d: OAuth 403 error, using fixed %v delay for retry", account.ID, delay)
+				} else {
+					delay = retryBackoffDelay(attempt)
+				}
 				remaining := maxRetryElapsed - elapsed
 				if delay > remaining {
 					delay = remaining
