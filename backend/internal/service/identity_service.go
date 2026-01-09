@@ -99,8 +99,9 @@ func (s *IdentityService) GetOrCreateFingerprint(ctx context.Context, accountID 
 func (s *IdentityService) createFingerprintFromHeaders(headers http.Header) *Fingerprint {
 	fp := &Fingerprint{}
 
-	// 获取User-Agent
-	if ua := headers.Get("User-Agent"); ua != "" {
+	// 获取User-Agent：只有当客户端是 Claude Code 时才保留其 User-Agent
+	// 否则使用默认的 Claude Code User-Agent 以通过 Anthropic 的验证
+	if ua := headers.Get("User-Agent"); ua != "" && claudeCliUserAgentRe.MatchString(ua) {
 		fp.UserAgent = ua
 	} else {
 		fp.UserAgent = defaultFingerprint.UserAgent
