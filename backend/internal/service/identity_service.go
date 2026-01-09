@@ -126,6 +126,7 @@ func getHeaderOrDefault(headers http.Header, key, defaultValue string) string {
 }
 
 // ApplyFingerprint 将指纹应用到请求头（覆盖原有的x-stainless-*头）
+// 同时设置 Claude Code 客户端必需的标识头
 func (s *IdentityService) ApplyFingerprint(req *http.Request, fp *Fingerprint) {
 	if fp == nil {
 		return
@@ -155,6 +156,12 @@ func (s *IdentityService) ApplyFingerprint(req *http.Request, fp *Fingerprint) {
 	if fp.StainlessRuntimeVersion != "" {
 		req.Header.Set("X-Stainless-Runtime-Version", fp.StainlessRuntimeVersion)
 	}
+
+	// 设置 Claude Code 客户端必需的标识头（关键！）
+	req.Header.Set("X-App", "cli")
+	req.Header.Set("X-Stainless-Retry-Count", "0")
+	req.Header.Set("X-Stainless-Timeout", "600")
+	req.Header.Set("Anthropic-Dangerous-Direct-Browser-Access", "true")
 }
 
 // RewriteUserID 重写body中的metadata.user_id
