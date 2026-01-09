@@ -18,11 +18,11 @@ import (
 var (
 	// 匹配 user_id 格式: user_{64位hex}_account__session_{uuid}
 	userIDRegex = regexp.MustCompile(`^user_[a-f0-9]{64}_account__session_([a-f0-9-]{36})$`)
-	// 匹配 User-Agent 版本号: xxx/x.y.z
-	userAgentVersionRegex = regexp.MustCompile(`/(\d+)\.(\d+)\.(\d+)`)
+	// 匹配 Claude Code User-Agent 格式: claude-cli/x.y.z
+	claudeCodeUARegex = regexp.MustCompile(`^claude-cli/(\d+)\.(\d+)\.(\d+)`)
 )
 
-// 默认指纹值（当客户端未提供时使用）
+// 默认指纹值（Claude Code 客户端特征）
 var defaultFingerprint = Fingerprint{
 	UserAgent:               "claude-cli/2.0.62 (external, cli)",
 	StainlessLang:           "js",
@@ -62,26 +62,52 @@ func NewIdentityService(cache IdentityCache) *IdentityService {
 }
 
 // GetOrCreateFingerprint 获取或创建账号的指纹
-// 如果缓存存在，检测user-agent版本，新版本则更新
-// 如果缓存不存在，生成随机ClientID并从请求头创建指纹，然后缓存
+// 策略：
+// 1. 如果客户端是真正的 Claude Code（User-Agent 匹配 claude-cli/x.y.z），用它更新缓存
+// 2. 如果不是（如 SillyTavern），使用缓存的 Claude Code User-Agent
+// 3. 这样真正的 Claude Code 客户端可以自动升级版本，其他客户端也能正常工作
 func (s *IdentityService) GetOrCreateFingerprint(ctx context.Context, accountID int64, headers http.Header) (*Fingerprint, error) {
+	clientUA := headers.Get("User-Agent")
+	isRealClaudeCode := isClaudeCodeUserAgent(clientUA)
+
 	// 尝试从缓存获取指纹
 	cached, err := s.cache.GetFingerprint(ctx, accountID)
 	if err == nil && cached != nil {
-		// 检查客户端的user-agent是否是更新版本
-		clientUA := headers.Get("User-Agent")
-		if clientUA != "" && isNewerVersion(clientUA, cached.UserAgent) {
-			// 更新user-agent
-			cached.UserAgent = clientUA
-			// 保存更新后的指纹
-			_ = s.cache.SetFingerprint(ctx, accountID, cached)
-			log.Printf("Updated fingerprint user-agent for account %d: %s", accountID, clientUA)
+		if isRealClaudeCode {
+			// 真正的 Claude Code 客户端：检查是否需要更新版本
+			if isNewerClaudeCodeVersion(clientUA, cached.UserAgent) {
+				cached.UserAgent = clientUA
+				_ = s.cache.SetFingerprint(ctx, accountID, cached)
+				log.Printf("Updated fingerprint User-Agent for account %d: %s", accountID, clientUA)
+			}
+		} else {
+			// 非 Claude Code 客户端：确保使用 Claude Code User-Agent
+			// 如果缓存的不是 Claude Code 格式，强制使用默认值
+			if !isClaudeCodeUserAgent(cached.UserAgent) {
+				cached.UserAgent = defaultFingerprint.UserAgent
+				_ = s.cache.SetFingerprint(ctx, accountID, cached)
+				log.Printf("Fixed fingerprint User-Agent to default for account %d", accountID)
+			}
 		}
 		return cached, nil
 	}
 
 	// 缓存不存在或解析失败，创建新指纹
-	fp := s.createFingerprintFromHeaders(headers)
+	fp := &Fingerprint{
+		StainlessLang:           defaultFingerprint.StainlessLang,
+		StainlessPackageVersion: defaultFingerprint.StainlessPackageVersion,
+		StainlessOS:             defaultFingerprint.StainlessOS,
+		StainlessArch:           defaultFingerprint.StainlessArch,
+		StainlessRuntime:        defaultFingerprint.StainlessRuntime,
+		StainlessRuntimeVersion: defaultFingerprint.StainlessRuntimeVersion,
+	}
+
+	// 如果是真正的 Claude Code 客户端，使用它的 User-Agent；否则使用默认值
+	if isRealClaudeCode {
+		fp.UserAgent = clientUA
+	} else {
+		fp.UserAgent = defaultFingerprint.UserAgent
+	}
 
 	// 生成随机ClientID
 	fp.ClientID = generateClientID()
@@ -91,38 +117,8 @@ func (s *IdentityService) GetOrCreateFingerprint(ctx context.Context, accountID 
 		log.Printf("Warning: failed to cache fingerprint for account %d: %v", accountID, err)
 	}
 
-	log.Printf("Created new fingerprint for account %d with client_id: %s", accountID, fp.ClientID)
+	log.Printf("Created new fingerprint for account %d with client_id: %s, user_agent: %s", accountID, fp.ClientID, fp.UserAgent)
 	return fp, nil
-}
-
-// createFingerprintFromHeaders 从请求头创建指纹
-func (s *IdentityService) createFingerprintFromHeaders(headers http.Header) *Fingerprint {
-	fp := &Fingerprint{}
-
-	// 获取User-Agent
-	if ua := headers.Get("User-Agent"); ua != "" {
-		fp.UserAgent = ua
-	} else {
-		fp.UserAgent = defaultFingerprint.UserAgent
-	}
-
-	// 获取x-stainless-*头，如果没有则使用默认值
-	fp.StainlessLang = getHeaderOrDefault(headers, "X-Stainless-Lang", defaultFingerprint.StainlessLang)
-	fp.StainlessPackageVersion = getHeaderOrDefault(headers, "X-Stainless-Package-Version", defaultFingerprint.StainlessPackageVersion)
-	fp.StainlessOS = getHeaderOrDefault(headers, "X-Stainless-OS", defaultFingerprint.StainlessOS)
-	fp.StainlessArch = getHeaderOrDefault(headers, "X-Stainless-Arch", defaultFingerprint.StainlessArch)
-	fp.StainlessRuntime = getHeaderOrDefault(headers, "X-Stainless-Runtime", defaultFingerprint.StainlessRuntime)
-	fp.StainlessRuntimeVersion = getHeaderOrDefault(headers, "X-Stainless-Runtime-Version", defaultFingerprint.StainlessRuntimeVersion)
-
-	return fp
-}
-
-// getHeaderOrDefault 获取header值，如果不存在则返回默认值
-func getHeaderOrDefault(headers http.Header, key, defaultValue string) string {
-	if v := headers.Get(key); v != "" {
-		return v
-	}
-	return defaultValue
 }
 
 // ApplyFingerprint 将指纹应用到请求头（覆盖原有的x-stainless-*头）
@@ -155,6 +151,12 @@ func (s *IdentityService) ApplyFingerprint(req *http.Request, fp *Fingerprint) {
 	if fp.StainlessRuntimeVersion != "" {
 		req.Header.Set("X-Stainless-Runtime-Version", fp.StainlessRuntimeVersion)
 	}
+
+	// Claude Code 客户端必需的额外头
+	req.Header.Set("X-Stainless-Retry-Count", "0")
+	req.Header.Set("X-Stainless-Timeout", "60")
+	req.Header.Set("X-App", "cli")
+	req.Header.Set("Anthropic-Dangerous-Direct-Browser-Access", "true")
 }
 
 // RewriteUserID 重写body中的metadata.user_id
@@ -229,43 +231,36 @@ func generateUUIDFromSeed(seed string) string {
 		bytes[0:4], bytes[4:6], bytes[6:8], bytes[8:10], bytes[10:16])
 }
 
-// parseUserAgentVersion 解析user-agent版本号
-// 例如：claude-cli/2.0.62 -> (2, 0, 62)
-func parseUserAgentVersion(ua string) (major, minor, patch int, ok bool) {
-	// 匹配 xxx/x.y.z 格式
-	matches := userAgentVersionRegex.FindStringSubmatch(ua)
-	if len(matches) != 4 {
-		return 0, 0, 0, false
-	}
-	major, _ = strconv.Atoi(matches[1])
-	minor, _ = strconv.Atoi(matches[2])
-	patch, _ = strconv.Atoi(matches[3])
-	return major, minor, patch, true
+// isClaudeCodeUserAgent 检查User-Agent是否为Claude Code客户端格式
+func isClaudeCodeUserAgent(ua string) bool {
+	return claudeCodeUARegex.MatchString(ua)
 }
 
-// isNewerVersion 比较版本号，判断newUA是否比cachedUA更新
-func isNewerVersion(newUA, cachedUA string) bool {
-	newMajor, newMinor, newPatch, newOk := parseUserAgentVersion(newUA)
-	cachedMajor, cachedMinor, cachedPatch, cachedOk := parseUserAgentVersion(cachedUA)
+// isNewerClaudeCodeVersion 比较两个Claude Code User-Agent版本
+// 返回true如果newUA版本比oldUA更新
+func isNewerClaudeCodeVersion(newUA, oldUA string) bool {
+	newMatches := claudeCodeUARegex.FindStringSubmatch(newUA)
+	oldMatches := claudeCodeUARegex.FindStringSubmatch(oldUA)
 
-	if !newOk || !cachedOk {
+	if newMatches == nil || oldMatches == nil {
 		return false
 	}
+
+	// 解析版本号 (major.minor.patch)
+	newMajor, _ := strconv.Atoi(newMatches[1])
+	newMinor, _ := strconv.Atoi(newMatches[2])
+	newPatch, _ := strconv.Atoi(newMatches[3])
+
+	oldMajor, _ := strconv.Atoi(oldMatches[1])
+	oldMinor, _ := strconv.Atoi(oldMatches[2])
+	oldPatch, _ := strconv.Atoi(oldMatches[3])
 
 	// 比较版本号
-	if newMajor > cachedMajor {
-		return true
+	if newMajor != oldMajor {
+		return newMajor > oldMajor
 	}
-	if newMajor < cachedMajor {
-		return false
+	if newMinor != oldMinor {
+		return newMinor > oldMinor
 	}
-
-	if newMinor > cachedMinor {
-		return true
-	}
-	if newMinor < cachedMinor {
-		return false
-	}
-
-	return newPatch > cachedPatch
+	return newPatch > oldPatch
 }
