@@ -49,6 +49,9 @@ func (m *mockProxyRepository) ExistsByHostPortAuth(ctx context.Context, host str
 func (m *mockProxyRepository) CountAccountsByProxyID(ctx context.Context, proxyID int64) (int64, error) {
 	return 0, nil
 }
+func (m *mockProxyRepository) FindFirstActiveByNameContains(ctx context.Context, keyword string) (*service.Proxy, error) {
+	return nil, nil
+}
 
 type GitHubReleaseServiceSuite struct {
 	suite.Suite

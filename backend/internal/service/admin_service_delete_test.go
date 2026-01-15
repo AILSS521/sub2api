@@ -194,6 +194,10 @@ func (s *proxyRepoStub) CountAccountsByProxyID(ctx context.Context, proxyID int6
 	panic("unexpected CountAccountsByProxyID call")
 }
 
+func (s *proxyRepoStub) FindFirstActiveByNameContains(ctx context.Context, keyword string) (*Proxy, error) {
+	panic("unexpected FindFirstActiveByNameContains call")
+}
+
 type redeemRepoStub struct {
 	deleteErrByID map[int64]error
 	deletedIDs    []int64
