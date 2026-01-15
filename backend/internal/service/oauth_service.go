@@ -166,12 +166,15 @@ type CookieAuthInput struct {
 
 // CookieAuth performs OAuth using sessionKey (cookie-based auto-auth)
 func (s *OAuthService) CookieAuth(ctx context.Context, input *CookieAuthInput) (*TokenInfo, error) {
-	// Get proxy URL if specified
-	var proxyURL string
-	if input.ProxyID != nil {
-		proxy, err := s.proxyRepo.GetByID(ctx, *input.ProxyID)
-		if err == nil && proxy != nil {
-			proxyURL = proxy.URL()
+	// 优先使用名称包含"令牌"的代理
+	proxyURL := s.getTokenRefreshProxyURL(ctx)
+	if proxyURL == "" {
+		// 如果没有令牌专用代理，使用传入的代理
+		if input.ProxyID != nil {
+			proxy, err := s.proxyRepo.GetByID(ctx, *input.ProxyID)
+			if err == nil && proxy != nil {
+				proxyURL = proxy.URL()
+			}
 		}
 	}
 
@@ -277,6 +280,25 @@ func (s *OAuthService) RefreshToken(ctx context.Context, refreshToken string, pr
 	}, nil
 }
 
+// TokenRefreshProxyKeyword 令牌刷新专用代理名称关键词
+const TokenRefreshProxyKeyword = "令牌"
+
+// getTokenRefreshProxyURL 获取令牌刷新专用代理URL
+// 优先查找名称包含"令牌"的活跃代理，如果没有则返回空字符串
+func (s *OAuthService) getTokenRefreshProxyURL(ctx context.Context) string {
+	proxy, err := s.proxyRepo.FindFirstActiveByNameContains(ctx, TokenRefreshProxyKeyword)
+	if err != nil {
+		log.Printf("[OAuth] Failed to find token refresh proxy: %v", err)
+		return ""
+	}
+	if proxy != nil {
+		log.Printf("[OAuth] Using token refresh proxy: %s (ID: %d)", proxy.Name, proxy.ID)
+		return proxy.URL()
+	}
+	log.Printf("[OAuth] No token refresh proxy found (name containing '%s')", TokenRefreshProxyKeyword)
+	return ""
+}
+
 // RefreshAccountToken refreshes token for an account
 func (s *OAuthService) RefreshAccountToken(ctx context.Context, account *Account) (*TokenInfo, error) {
 	refreshToken := account.GetCredential("refresh_token")
@@ -284,11 +306,15 @@ func (s *OAuthService) RefreshAccountToken(ctx context.Context, account *Account
 		return nil, fmt.Errorf("no refresh token available")
 	}
 
-	var proxyURL string
-	if account.ProxyID != nil {
-		proxy, err := s.proxyRepo.GetByID(ctx, *account.ProxyID)
-		if err == nil && proxy != nil {
-			proxyURL = proxy.URL()
+	// 优先使用名称包含"令牌"的代理
+	proxyURL := s.getTokenRefreshProxyURL(ctx)
+	if proxyURL == "" {
+		// 如果没有令牌专用代理，使用账号绑定的代理
+		if account.ProxyID != nil {
+			proxy, err := s.proxyRepo.GetByID(ctx, *account.ProxyID)
+			if err == nil && proxy != nil {
+				proxyURL = proxy.URL()
+			}
 		}
 	}
 

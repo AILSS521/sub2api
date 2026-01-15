@@ -25,6 +25,9 @@ type ProxyRepository interface {
 
 	ExistsByHostPortAuth(ctx context.Context, host string, port int, username, password string) (bool, error)
 	CountAccountsByProxyID(ctx context.Context, proxyID int64) (int64, error)
+
+	// FindFirstActiveByNameContains 查找第一个名称包含指定关键词的活跃代理
+	FindFirstActiveByNameContains(ctx context.Context, keyword string) (*Proxy, error)
 }
 
 // CreateProxyRequest 创建代理请求

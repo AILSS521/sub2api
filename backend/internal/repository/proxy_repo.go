@@ -235,6 +235,24 @@ func (r *proxyRepository) ListActiveWithAccountCount(ctx context.Context) ([]ser
 	return result, nil
 }
 
+// FindFirstActiveByNameContains 查找第一个名称包含指定关键词的活跃代理
+func (r *proxyRepository) FindFirstActiveByNameContains(ctx context.Context, keyword string) (*service.Proxy, error) {
+	m, err := r.client.Proxy.Query().
+		Where(
+			proxy.StatusEQ(service.StatusActive),
+			proxy.NameContains(keyword),
+		).
+		Order(dbent.Asc(proxy.FieldID)).
+		First(ctx)
+	if err != nil {
+		if dbent.IsNotFound(err) {
+			return nil, nil // 未找到返回 nil, nil
+		}
+		return nil, err
+	}
+	return proxyEntityToService(m), nil
+}
+
 func proxyEntityToService(m *dbent.Proxy) *service.Proxy {
 	if m == nil {
 		return nil
